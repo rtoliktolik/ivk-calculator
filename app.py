@@ -4,6 +4,8 @@ from PIL import Image, ImageDraw, ImageFilter
 import cv2
 from scipy.ndimage import binary_erosion
 from ultralytics import YOLO
+import base64
+import os
 
 # Constant road background reference (Asphalt, overcast day)
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
@@ -48,12 +50,21 @@ def get_text_rating(ivk_value: float) -> tuple:
 def create_checkerboard_pattern(width, height, square_size=15):
     base = np.zeros((square_size * 2, square_size * 2, 3), dtype=np.uint8)
     base[0:square_size, 0:square_size] = 240
-    import base64
+    base[square_size:, square_size:] = 240
+    base[0:square_size, square_size:] = 200
+    base[square_size:, 0:square_size] = 200
+    reps_y = int(np.ceil(height / (square_size * 2)))
+    reps_x = int(np.ceil(width / (square_size * 2)))
+    pattern = np.tile(base, (reps_y, reps_x, 1))
+    return pattern[0:height, 0:width]
 
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
+# ---------------------------------------------------------------------------
+# Streamlit Web Interface (English Version with Embedded HTML Branding)
+# ---------------------------------------------------------------------------
 try:
     if os.path.exists("logo.png"):
         encoded_img = get_base64_image("logo.png")
@@ -67,14 +78,6 @@ try:
         )
 except Exception:
     pass
-    <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 20px;">
-        <div style="font-family: 'Arial Black', Gadget, sans-serif; font-size: 36px; font-weight: 900; letter-spacing: 2px; color: #1E3A8A; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); border: 3px solid #1E3A8A; padding: 5px 20px; border-radius: 8px;">
-            FAIRRATE<span style="color: #FF4B4B;">-X</span>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
 
 st.title("Automated VIC Calculator")
 st.write("The app is optimized for human visual perception. AI detects the vehicle body paint, automatically filtering out wheels, windows, and deep shadows.")
