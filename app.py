@@ -4,6 +4,8 @@ from PIL import Image, ImageDraw, ImageFilter
 import cv2
 from scipy.ndimage import binary_erosion
 from ultralytics import YOLO
+import requests
+from io import BytesIO
 
 # Constant road background reference (Asphalt, overcast day)
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
@@ -23,8 +25,8 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
     car_lab = np.array(car_lab).flatten()
     
-    L1, a1, b1 = float(car_lab[0]), float(car_lab[1]), float(car_lab[2])
-    L2, a2, b2 = float(bg_lab[0]), float(bg_lab[1]), float(bg_lab[2])
+    L1, a1, b1 = float(car_lab), float(car_lab), float(car_lab)
+    L2, a2, b2 = float(bg_lab), float(bg_lab), float(bg_lab)
     
     delta_L = abs(L1 - L2)
     delta_ab = np.sqrt((a1 - a2)**2 + (b1 - b2)**2)
@@ -57,9 +59,21 @@ def create_checkerboard_pattern(width, height, square_size=15):
     return pattern[0:height, 0:width]
 
 # ---------------------------------------------------------------------------
-# Streamlit Web Interface (English Version)
+# Streamlit Web Interface (English Version with Direct URL Logo)
 # ---------------------------------------------------------------------------
-st.title("🚗 Automated VIC Calculator")
+# GUARANTEED OVER-THE-AIR LOGO LOADING FROM GITHUB USERALL DATA SERVER
+logo_url = "https://githubusercontent.com"
+try:
+    response = requests.get(logo_url, timeout=5)
+    if response.status_code == 200:
+        logo_img = Image.open(BytesIO(response.content))
+        col_left, col_logo, col_right = st.columns([1, 2, 1])
+        with col_logo:
+            st.image(logo_img, use_container_width=True)
+except Exception:
+    pass
+
+st.title("Automated VIC Calculator")
 st.write("The app is optimized for human visual perception. AI detects the vehicle body paint, automatically filtering out wheels, windows, and deep shadows.")
 
 uploaded_file = st.file_uploader("Step 1 — Upload a vehicle photo", type=["jpg", "jpeg", "png"])
@@ -122,7 +136,6 @@ if uploaded_file is not None:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
                     
-                    # FIXED: Added [0] index to check L-channel brightness properly
                     if 25 < lab[0] < 92:
                         color_saturation = np.linalg.norm(lab[1:])
                         if color_saturation > 2.0:
@@ -188,3 +201,4 @@ if uploaded_file is not None:
             
         st.markdown(f"**Extracted Body Color (Pure Pigment):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
+        st.info(f"Constant Background Reference: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (Asphalt, Overcast)")
