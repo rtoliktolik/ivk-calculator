@@ -28,10 +28,11 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     # Адаптация под человеческий глаз: вес цветности увеличен в 1.8 раза
     ivk = np.sqrt((delta_L * 1.0) ** 2 + (delta_ab * 1.8) ** 2)
     
+    # ИСПРАВЛЕНО: Безопасное извлечение чисел через метод .item()
     return {
-        "delta_L": float(np.round(delta_L, 2)),
-        "delta_ab": float(np.round(delta_ab, 2)),
-        "ivk": float(np.round(ivk, 2))
+        "delta_L": float(np.round(delta_L, 2).item() if hasattr(delta_L, "item") else np.round(delta_L, 2)),
+        "delta_ab": float(np.round(delta_ab, 2).item() if hasattr(delta_ab, "item") else np.round(delta_ab, 2)),
+        "ivk": float(np.round(ivk, 2).item() if hasattr(ivk, "item") else np.round(ivk, 2))
     }
 
 def get_text_rating(ivk_value: float) -> tuple:
@@ -121,10 +122,9 @@ if uploaded_file is not None:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
                     
-                    # ОСЛАБЛЕННЫЙ ФИЛЬТР ЯРКОСТИ (от 25 до 90)
+                    # СБАЛАНСИРОВАННЫЕ ФИЛЬТРЫ ЯРКОСТИ И НАСЫЩЕННОСТИ
                     if 25 < lab[0] < 90:
                         color_saturation = np.linalg.norm(lab[1:])
-                        # СБАЛАНСИРОВАННЫЙ ПОРОГ НАСЫЩЕННОСТИ (10.0 вместо 15.0)
                         if color_saturation > 10.0:
                             valid_pixels_lab.append(lab)
                             valid_coords.append((r, c))
@@ -132,7 +132,7 @@ if uploaded_file is not None:
                         
                 if len(valid_pixels_lab) > 0:
                     valid_pixels_lab = np.array(valid_pixels_lab)
-                    cutoff = np.percentile(saturations, 65) # Чуть расширили выборку пикселей
+                    cutoff = np.percentile(saturations, 65)
                     pure_paint_indices = [i for i, sat in enumerate(saturations) if sat >= cutoff]
                     
                     pure_labs = valid_pixels_lab[pure_paint_indices]
