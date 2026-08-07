@@ -8,17 +8,15 @@ from ultralytics import YOLO
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
 
 def rgb_to_lab_opencv_single(rgb_color: tuple) -> np.ndarray:
-    """Точный перевод одного пикселя RGB -> LAB через OpenCV."""
     img_bgr = np.uint8([[list(rgb_color[::-1])]])
     img_lab = cv2.cvtColor(img_bgr.astype(np.float32) / 255.0, cv2.COLOR_BGR2Lab)
-    return img_lab[0, 0]
+    return img_lab.flatten()
 
 def lab_to_rgb_opencv_single(lab_color: np.ndarray) -> tuple:
-    """Точный и безопасный перевод одного пикселя LAB -> RGB через OpenCV."""
     lab_pixel = np.array([[lab_color]], dtype=np.float32)
     rgb_pixel = cv2.cvtColor(lab_pixel, cv2.COLOR_Lab2RGB)
     rgb_clipped = np.clip(rgb_pixel * 255.0, 0, 255).astype(np.uint8)
-    return tuple(int(x) for x in rgb_clipped[0, 0])
+    return tuple(int(x) for x in rgb_clipped.flatten())
 
 def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) -> dict:
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
@@ -26,7 +24,9 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     
     delta_L = abs(car_lab[0] - bg_lab[0])
     delta_ab = np.linalg.norm(car_lab[1:] - bg_lab[1:])
-    ivk = np.linalg.norm(car_lab - bg_lab)
+    
+    # АДАПТАЦИЯ ПОД ГЛАЗ ЧЕЛОВЕКА: Вес цветности увеличен в 1.8 раза
+    ivk = np.sqrt((delta_L * 1.0) ** 2 + (delta_ab * 1.8) ** 2)
     
     return {
         "delta_L": float(np.round(delta_L, 2)),
@@ -35,8 +35,8 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     }
 
 def get_text_rating(ivk_value: float) -> tuple:
-    if ivk_value < 15.0: return "Очень плохо 🔴", "#FF4B4B"
-    elif ivk_value < 30.0: return "Плохо 🟠", "#FFA500"
+    if ivk_value < 18.0: return "Очень плохо 🔴", "#FF4B4B"
+    elif ivk_value < 28.0: return "Плохо 🟠", "#FFA500"
     elif ivk_value < 45.0: return "Удовлетворительно 🟡", "#F0D300"
     elif ivk_value < 65.0: return "Хорошо 🟢", "#2EA043"
     else: return "Отлично 🔵", "#007BFF"
@@ -56,14 +56,13 @@ def create_checkerboard_pattern(width, height, square_size=15):
 # Веб-интерфейс Streamlit
 # ---------------------------------------------------------------------------
 st.title("🚗 Автоматический ИВК-калькулятор")
-st.write("Программа работает в облаке. ИИ находит кузов автомобиля и автоматически убирает колеса.")
+st.write("Программа адаптирована под человеческое зрение. ИИ находит чистый пигмент ЛКП, игнорируя тени и колеса.")
 
 uploaded_file = st.file_uploader("Шаг 1 — Загрузите фото машины", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     pil_img = Image.open(uploaded_file).convert("RGB")
     
-    # Автоматическое сжатие для стабильности памяти сервера
     max_size = 1200
     if max(pil_img.size) > max_size:
         pil_img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
@@ -108,8 +107,8 @@ if uploaded_file is not None:
             if np.sum(car_mask) > 0:
                 clean_paint_mask = np.clip(car_mask.astype(int) - wheels_mask.astype(int), 0, 1).astype(np.uint8)
                 
-                # Чистим края маски
-                struct_el = np.ones((9, 9), dtype=bool)
+                # Жёстко чистим края от травы и теней
+                struct_el = np.ones((13, 13), dtype=bool)
                 from scipy.ndimage import binary_erosion
                 clean_paint_mask = binary_erosion(clean_paint_mask, structure=struct_el).astype(np.uint8)
                 
@@ -120,8 +119,10 @@ if uploaded_file is not None:
                 for r, c in car_indices:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
-                    # Фильтр блеска лака и глубоких теней по яркости L
-                    if 15 < lab[0] < 92:
+                    
+                    # СТРОГИЙ ФИЛЬТР: убираем глубокие тени (L < 38) и блеклые грязные цвета
+                    color_saturation = np.linalg.norm(lab[1:])
+                    if 38 < lab[0] < 88 and color_saturation > 8.0:
                         valid_pixels_lab.append(lab)
                         valid_coords.append((r, c))
                         
@@ -153,7 +154,7 @@ if uploaded_file is not None:
             draw.line([(cx-15, cy), (cx+15, cy)], fill=(255, 0, 0), width=3)
             draw.line([(cx, cy-15), (cx, cy+15)], fill=(255, 0, 0), width=3)
             
-        st.image(output_pil, caption="Зона анализа в облаке (Колеса автоматически убраны)", use_container_width=True)
+        st.image(output_pil, caption="Зона анализа (Тени и колеса отсечены ИИ)", use_container_width=True)
 
         res = calculate_ivk_lab(dominant_car_lab)
         rating_text, rating_color = get_text_rating(res["ivk"])
@@ -163,10 +164,9 @@ if uploaded_file is not None:
         st.write("")
         
         col1, col2, col3 = st.columns(3)
-        with col1: st.metric("Индекс ИВК (Полный)", f"{res['ivk']:.2f}")
+        with col1: st.metric("Индекс ИВК (Человеческий)", f"{res['ivk']:.2f}")
         with col2: st.metric("Разница яркости (ΔL)", f"{res['delta_L']:.2f}")
         with col3: st.metric("Разница тона (Δab)", f"{res['delta_ab']:.2f}")
             
-        st.markdown(f"**Цвет кузова (без бликов):** RGB{dominant_car_rgb}")
+        st.markdown(f"**Цвет кузова (чистый пигмент):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
-        st.info(f"Эталон фона зафиксирован: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (асфальт, облачно)")
