@@ -48,20 +48,25 @@ def get_text_rating(ivk_value: float) -> tuple:
 def create_checkerboard_pattern(width, height, square_size=15):
     base = np.zeros((square_size * 2, square_size * 2, 3), dtype=np.uint8)
     base[0:square_size, 0:square_size] = 240
-    base[square_size:, square_size:] = 240
-    base[0:square_size, square_size:] = 200
-    base[square_size:, 0:square_size] = 200
-    reps_y = int(np.ceil(height / (square_size * 2)))
-    reps_x = int(np.ceil(width / (square_size * 2)))
-    pattern = np.tile(base, (reps_y, reps_x, 1))
-    return pattern[0:height, 0:width]
+    import base64
 
-# ---------------------------------------------------------------------------
-# Streamlit Web Interface (English Version with Embedded HTML Branding)
-# ---------------------------------------------------------------------------
-# STYLISH CENTRED BRAND LOGO VIA DIRECT EMBEDDED HTML
-st.markdown(
-    """
+def get_base64_image(image_path):
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
+
+try:
+    if os.path.exists("logo.png"):
+        encoded_img = get_base64_image("logo.png")
+        st.markdown(
+            f"""
+            <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px;">
+                <img src="data:image/png;base64,{encoded_img}" style="max-width: 280px; height: auto;">
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+except Exception:
+    pass
     <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 20px;">
         <div style="font-family: 'Arial Black', Gadget, sans-serif; font-size: 36px; font-weight: 900; letter-spacing: 2px; color: #1E3A8A; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); border: 3px solid #1E3A8A; padding: 5px 20px; border-radius: 8px;">
             FAIRRATE<span style="color: #FF4B4B;">-X</span>
