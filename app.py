@@ -23,8 +23,8 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
     car_lab = np.array(car_lab).flatten()
     
-    L1, a1, b1 = float(car_lab), float(car_lab), float(car_lab)
-    L2, a2, b2 = float(bg_lab), float(bg_lab), float(bg_lab)
+    L1, a1, b1 = float(car_lab[0]), float(car_lab[1]), float(car_lab[2])
+    L2, a2, b2 = float(bg_lab[0]), float(bg_lab[1]), float(bg_lab[2])
     
     delta_L = abs(L1 - L2)
     delta_ab = np.sqrt((a1 - a2)**2 + (b1 - b2)**2)
@@ -122,7 +122,8 @@ if uploaded_file is not None:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
                     
-                    if 25 < lab < 92:
+                    # FIXED: Added [0] index to check L-channel brightness properly
+                    if 25 < lab[0] < 92:
                         color_saturation = np.linalg.norm(lab[1:])
                         if color_saturation > 2.0:
                             valid_pixels_lab.append(lab)
@@ -163,7 +164,6 @@ if uploaded_file is not None:
             mask_pil = Image.fromarray((final_calculated_mask * 255).astype(np.uint8))
             edges = mask_pil.filter(ImageFilter.FIND_EDGES)
             edges_np = np.array(edges)
-            # ТУТ ИСПРАВЛЕНО: Добавлен цвет прорисовки (0, 255, 0)
             visual_img[edges_np > 100] = (0, 255, 0)
             output_pil = Image.fromarray(visual_img)
             draw = ImageDraw.Draw(output_pil)
@@ -188,4 +188,3 @@ if uploaded_file is not None:
             
         st.markdown(f"**Extracted Body Color (Pure Pigment):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
-        st.info(f"Constant Background Reference: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (Asphalt, Overcast)")
