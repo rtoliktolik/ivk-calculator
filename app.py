@@ -110,8 +110,8 @@ if uploaded_file is not None:
             if np.sum(car_mask) > 0:
                 clean_paint_mask = np.clip(car_mask.astype(int) - wheels_mask.astype(int), 0, 1).astype(np.uint8)
                 
-                # РАСШИРИЛИ ОБЛАСТЬ: Уменьшили отступ от краев кузова до (7, 7) вместо (11, 11)
-                struct_el = np.ones((7, 7), dtype=bool)
+                # МАКСИМАЛЬНЫЙ ОХВАТ: Уменьшили отступ от краев до минимума (5, 5)
+                struct_el = np.ones((5, 5), dtype=bool)
                 from scipy.ndimage import binary_erosion
                 clean_paint_mask = binary_erosion(clean_paint_mask, structure=struct_el).astype(np.uint8)
                 
@@ -124,17 +124,17 @@ if uploaded_file is not None:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
                     
-                    if 25 < lab[0] < 90:
+                    if 25 < lab[0] < 92:
                         color_saturation = np.linalg.norm(lab[1:])
-                        # УМЕНЬШИЛИ ЧУВСТВИТЕЛЬНОСТЬ: Порог насыщенности 7.0 вместо 10.0
-                        if color_saturation > 7.0:
+                        # МАКСИМАЛЬНАЯ ЧУВСТВИТЕЛЬНОСТЬ: Порог насыщенности опущен до 4.0
+                        if color_saturation > 4.0:
                             valid_pixels_lab.append(lab)
                             valid_coords.append((r, c))
                             saturations.append(color_saturation)
                         
                 if len(valid_pixels_lab) > 0:
                     valid_pixels_lab = np.array(valid_pixels_lab)
-                    cutoff = np.percentile(saturations, 65)
+                    cutoff = np.percentile(saturations, 60) # Сделали выборку пикселей ещё шире
                     pure_paint_indices = [i for i, sat in enumerate(saturations) if sat >= cutoff]
                     
                     pure_labs = valid_pixels_lab[pure_paint_indices]
@@ -168,13 +168,11 @@ if uploaded_file is not None:
         output_pil = Image.fromarray(visual_img)
         draw = ImageDraw.Draw(output_pil)
         
-        # ВОЗВРАЩАЕМ ТОНКУЮ ЗЕЛЕНУЮ ЛИНИЮ КОНТУРА
+        # Тонкая зеленая рамка-подсветка
         if not manual_mode and np.sum(final_calculated_mask) > 0:
-            # Находим границы расчетной зоны математическим методом (вычитание размытия)
             mask_pil = Image.fromarray((final_calculated_mask * 255).astype(np.uint8))
             edges = mask_pil.filter(ImageFilter.FIND_EDGES)
             edges_np = np.array(edges)
-            # Там где край - рисуем тонкую зеленую линию (толщина 1-2 пикселя)
             visual_img[edges_np > 100] = [0, 255, 0]
             output_pil = Image.fromarray(visual_img)
             draw = ImageDraw.Draw(output_pil)
@@ -199,4 +197,3 @@ if uploaded_file is not None:
             
         st.markdown(f"**Цвет кузова (чистый пигмент):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
-        st.info(f"Эталон фона зафиксирован: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (асфальт, облачно)")
