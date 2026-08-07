@@ -22,10 +22,10 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
     car_lab = np.array(car_lab).flatten()
     
-    delta_L = abs(car_lab[0] - bg_lab[0])
+    delta_L = abs(car_lab - bg_lab)
     delta_ab = np.linalg.norm(car_lab[1:] - bg_lab[1:])
     
-    # АДАПТАЦИЯ ПОД ГЛАЗ ЧЕЛОВЕКА: Вес цветности увеличен в 1.8 раза
+    # Адаптация под человеческий глаз: вес цветности увеличен в 1.8 раза
     ivk = np.sqrt((delta_L * 1.0) ** 2 + (delta_ab * 1.8) ** 2)
     
     return {
@@ -77,7 +77,7 @@ if uploaded_file is not None:
     if manual_mode:
         st.subheader("Настройка точки контроля")
         cx = st.slider("Позиция по горизонтали (X)", 0, w, int(w / 2))
-        cy = st.slider("Позиция по вертикали (Y)", 0, h, int(h / 2))
+        cy = st.slider("Позиция по verticali (Y)", 0, h, int(h / 2))
         x1, y1 = max(0, cx - 10), max(0, cy - 10)
         x2, y2 = min(w, cx + 10), min(h, cy + 10)
         final_calculated_mask[y1:y2, x1:x2] = 1
@@ -113,6 +113,7 @@ if uploaded_file is not None:
                 clean_paint_mask = binary_erosion(clean_paint_mask, structure=struct_el).astype(np.uint8)
                 
                 car_indices = np.argwhere(clean_paint_mask == 1)
+                valid_pixels_rgb = []
                 valid_pixels_lab = []
                 valid_coords = []
                 
@@ -120,14 +121,22 @@ if uploaded_file is not None:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
                     
-                    # СТРОГИЙ ФИЛЬТР: убираем глубокие тени (L < 38) и блеклые грязные цвета
+                    # Фильтр глубоких теней и блеклых зон
                     color_saturation = np.linalg.norm(lab[1:])
-                    if 38 < lab[0] < 88 and color_saturation > 8.0:
+                    if 38 < lab < 88 and color_saturation > 8.0:
+                        valid_pixels_rgb.append(rgb)
                         valid_pixels_lab.append(lab)
                         valid_coords.append((r, c))
                         
                 if len(valid_pixels_lab) > 0:
-                    dominant_car_lab = np.median(valid_pixels_lab, axis=0)
+                    # НАХОДИМ РЕАЛЬНЫЙ ЭТАЛОННЫЙ ПИКСЕЛЬ (Метод геометрического центра цвета)
+                    avg_lab = np.median(valid_pixels_lab, axis=0)
+                    distances = np.linalg.norm(np.array(valid_pixels_lab) - avg_lab, axis=1)
+                    best_pixel_idx = np.argmin(distances)
+                    
+                    # Берём живой цвет конкретной точки автомобиля
+                    dominant_car_lab = valid_pixels_lab[best_pixel_idx]
+                    
                     for r, c in valid_coords:
                         final_calculated_mask[r, c] = 1
                 else:
@@ -170,3 +179,4 @@ if uploaded_file is not None:
             
         st.markdown(f"**Цвет кузова (чистый пигмент):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
+        st.info(f"Эталон фона зафиксирован: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (асфальт, облачно)")
