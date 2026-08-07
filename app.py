@@ -22,7 +22,7 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
     car_lab = np.array(car_lab).flatten()
     
-    delta_L = abs(car_lab[0] - bg_lab[0])
+    delta_L = abs(car_lab - bg_lab)
     delta_ab = np.linalg.norm(car_lab[1:] - bg_lab[1:])
     
     # Адаптация под человеческий глаз: вес цветности увеличен в 1.8 раза
@@ -35,10 +35,10 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     }
 
 def get_text_rating(ivk_value: float) -> tuple:
-    if ivk_value < 18.0: return "Очень плохо 🔴", "#FF4B4B"
-    elif ivk_value < 28.0: return "Плохо 🟠", "#FFA500"
-    elif ivk_value < 45.0: return "Удовлетворительно 🟡", "#F0D300"
-    elif ivk_value < 65.0: return "Хорошо 🟢", "#2EA043"
+    if ivk_value < 15.0: return "Очень плохо 🔴", "#FF4B4B"
+    elif ivk_value < 25.0: return "Плохо 🟠", "#FFA500"
+    elif ivk_value < 35.0: return "Удовлетворительно 🟡", "#F0D300"
+    elif ivk_value < 55.0: return "Хорошо 🟢", "#2EA043"
     else: return "Отлично 🔵", "#007BFF"
 
 def create_checkerboard_pattern(width, height, square_size=15):
@@ -107,34 +107,46 @@ if uploaded_file is not None:
             if np.sum(car_mask) > 0:
                 clean_paint_mask = np.clip(car_mask.astype(int) - wheels_mask.astype(int), 0, 1).astype(np.uint8)
                 
-                # Жёстко чистим края от травы и теней
-                struct_el = np.ones((13, 13), dtype=bool)
+                # Делаем глубокий отступ от краев кузова
+                struct_el = np.ones((15, 15), dtype=bool)
                 from scipy.ndimage import binary_erosion
                 clean_paint_mask = binary_erosion(clean_paint_mask, structure=struct_el).astype(np.uint8)
                 
                 car_indices = np.argwhere(clean_paint_mask == 1)
                 valid_pixels_lab = []
                 valid_coords = []
+                saturations = []
                 
                 for r, c in car_indices:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
                     
-                    # ИСПРАВЛЕНО: Сравниваем яркость lab[0] с числовыми порогами
-                    color_saturation = np.linalg.norm(lab[1:])
-                    if 35 < lab[0] < 88 and color_saturation > 7.0:
-                        valid_pixels_lab.append(lab)
-                        valid_coords.append((r, c))
+                    # Отсекаем тени по яркости L
+                    if 35 < lab < 85:
+                        color_saturation = np.linalg.norm(lab[1:])
+                        # Фильтруем блеклую глянцевую дымку (оставляем только выраженный пигмент)
+                        if color_saturation > 15.0:
+                            valid_pixels_lab.append(lab)
+                            valid_coords.append((r, c))
+                            saturations.append(color_saturation)
                         
                 if len(valid_pixels_lab) > 0:
-                    # Находим реальный пиксель ближайший к центру распределения цветов
-                    avg_lab = np.median(valid_pixels_lab, axis=0)
-                    distances = np.linalg.norm(np.array(valid_pixels_lab) - avg_lab, axis=1)
-                    best_pixel_idx = np.argmin(distances)
+                    # КЛЮЧЕВОЕИЗМЕНЕНИЕ: Берём верхние 25% самых насыщенных чистых пикселей краски
+                    # Это полностью исключает белесые отсветы и глянец из расчёта
+                    valid_pixels_lab = np.array(valid_pixels_lab)
+                    cutoff = np.percentile(saturations, 75)
+                    pure_paint_indices = [i for i, sat in enumerate(saturations) if sat >= cutoff]
                     
-                    dominant_car_lab = valid_pixels_lab[best_pixel_idx]
+                    pure_labs = valid_pixels_lab[pure_paint_indices]
+                    avg_pure_lab = np.median(pure_labs, axis=0)
                     
-                    for r, c in valid_coords:
+                    # Находим реальный самый представительный пигмент кузова
+                    distances = np.linalg.norm(pure_labs - avg_pure_lab, axis=1)
+                    best_idx = np.argmin(distances)
+                    dominant_car_lab = pure_labs[best_idx]
+                    
+                    for idx in pure_paint_indices:
+                        r, c = valid_coords[idx]
                         final_calculated_mask[r, c] = 1
                 else:
                     flat_pixels = img_np[clean_paint_mask == 1].reshape(-1, 3)
@@ -160,7 +172,7 @@ if uploaded_file is not None:
             draw.line([(cx-15, cy), (cx+15, cy)], fill=(255, 0, 0), width=3)
             draw.line([(cx, cy-15), (cx, cy+15)], fill=(255, 0, 0), width=3)
             
-        st.image(output_pil, caption="Зона анализа (Тени и колеса отсечены ИИ)", use_container_width=True)
+        st.image(output_pil, caption="Зона анализа (Глянец, блики и тени успешно отсечены)", use_container_width=True)
 
         res = calculate_ivk_lab(dominant_car_lab)
         rating_text, rating_color = get_text_rating(res["ivk"])
