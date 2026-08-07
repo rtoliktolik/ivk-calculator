@@ -31,7 +31,7 @@ def rgb_to_lab_pure(rgb_color: tuple) -> np.ndarray:
     return np.array([L, a, b])
 
 def lab_to_rgb_pure(lab_color: np.ndarray) -> tuple:
-    L, a, b = float(lab_color[0]), float(lab_color[1]), float(lab_color[2])
+    L, a, b = float(lab_color), float(lab_color), float(lab_color)
     fy = (L + 16.0) / 116.0
     fx = fy + (a / 500.0)
     fz = fy - (b / 200.0)
@@ -55,7 +55,7 @@ def lab_to_rgb_pure(lab_color: np.ndarray) -> tuple:
 
 def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) -> dict:
     bg_lab = rgb_to_lab_pure(bg_rgb)
-    delta_L = abs(car_lab[0] - bg_lab[0])
+    delta_L = abs(car_lab - bg_lab)
     delta_ab = np.linalg.norm(car_lab[1:] - bg_lab[1:])
     ivk = np.linalg.norm(car_lab - bg_lab)
     
@@ -92,7 +92,14 @@ st.write("Программа работает в облаке. ИИ находи
 uploaded_file = st.file_uploader("Шаг 1 — Загрузите фото машины", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
+    # Открываем изображение
     pil_img = Image.open(uploaded_file).convert("RGB")
+    
+    # АВТОМАТИЧЕСКОЕ СЖАТИЕ ТЯЖЕЛЫХ ФОТО (Ограничиваем макс. сторону до 1200 пикселей)
+    max_size = 1200
+    if max(pil_img.size) > max_size:
+        pil_img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+        
     img_np = np.array(pil_img)
     h, w, _ = img_np.shape
     
@@ -177,10 +184,6 @@ if uploaded_file is not None:
         if manual_mode:
             draw.line([(cx-15, cy), (cx+15, cy)], fill=(255, 0, 0), width=3)
             draw.line([(cx, cy-15), (cx, cy+15)], fill=(255, 0, 0), width=3)
-        else:
-            # Тонкая зеленая рамка-подсветка вокруг расчетной зоны кузова
-            # Для простоты в облаке подсветим края расчетных пикселей
-            pass
             
         st.image(output_pil, caption="Зона анализа в облаке (Колеса автоматически убраны)", use_container_width=True)
 
