@@ -71,7 +71,7 @@ try:
         st.markdown(
             f"""
             <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px;">
-                <img src="data:image/png;base64,{encoded_img}" style="max-width: 280px; height: auto;">
+                <img src="data:image/png;base64,{encoded_img}" style="max-width: 560px; height: auto;">
             </div>
             """,
             unsafe_allow_html=True
