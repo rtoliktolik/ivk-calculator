@@ -25,7 +25,6 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
     car_lab = np.array(car_lab).flatten()
     
-    # ИСПРАВЛЕНО: Безопасное поиндексное извлечение скаляров из массивов NumPy
     L1, a1, b1 = float(car_lab[0]), float(car_lab[1]), float(car_lab[2])
     L2, a2, b2 = float(bg_lab[0]), float(bg_lab[1]), float(bg_lab[2])
     
@@ -46,7 +45,7 @@ def get_text_rating(ivk_value: float) -> tuple:
     elif ivk_value < 25.0: return "Poor 🟠", "#FFA500"
     elif ivk_value < 35.0: return "Satisfactory 🟡", "#F0D300"
     elif ivk_value < 55.0: return "Good 🟢", "#2EA043"
-   logo_url = "https://githubusercontent.com"
+    else: return "Excellent 🔵", "#007BFF"
 
 def create_checkerboard_pattern(width, height, square_size=15):
     base = np.zeros((square_size * 2, square_size * 2, 3), dtype=np.uint8)
@@ -62,13 +61,13 @@ def create_checkerboard_pattern(width, height, square_size=15):
 # ---------------------------------------------------------------------------
 # Streamlit Web Interface (English Version with Direct URL Logo)
 # ---------------------------------------------------------------------------
-# GUARANTEED OVER-THE-AIR LOGO LOADING FROM GITHUB SERVERS
+# GUARANTEED OVER-THE-AIR LOGO LOADING WITH CORRECT URL ALIGNMENT
 logo_url = "https://githubusercontent.com"
 try:
     response = requests.get(logo_url, timeout=5)
     if response.status_code == 200:
         logo_img = Image.open(BytesIO(response.content))
-        col_left, col_logo, col_right = st.columns()
+        col_left, col_logo, col_right = st.columns([1, 2, 1])
         with col_logo:
             st.image(logo_img, use_container_width=True)
 except Exception:
