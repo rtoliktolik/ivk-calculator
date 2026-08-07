@@ -25,8 +25,9 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
     car_lab = np.array(car_lab).flatten()
     
-    L1, a1, b1 = float(car_lab), float(car_lab), float(car_lab)
-    L2, a2, b2 = float(bg_lab), float(bg_lab), float(bg_lab)
+    # ИСПРАВЛЕНО: Безопасное поиндексное извлечение скаляров из массивов NumPy
+    L1, a1, b1 = float(car_lab[0]), float(car_lab[1]), float(car_lab[2])
+    L2, a2, b2 = float(bg_lab[0]), float(bg_lab[1]), float(bg_lab[2])
     
     delta_L = abs(L1 - L2)
     delta_ab = np.sqrt((a1 - a2)**2 + (b1 - b2)**2)
@@ -61,13 +62,13 @@ def create_checkerboard_pattern(width, height, square_size=15):
 # ---------------------------------------------------------------------------
 # Streamlit Web Interface (English Version with Direct URL Logo)
 # ---------------------------------------------------------------------------
-# GUARANTEED OVER-THE-AIR LOGO LOADING FROM GITHUB USERALL DATA SERVER
+# GUARANTEED OVER-THE-AIR LOGO LOADING FROM GITHUB SERVERS
 logo_url = "https://githubusercontent.com"
 try:
     response = requests.get(logo_url, timeout=5)
     if response.status_code == 200:
         logo_img = Image.open(BytesIO(response.content))
-        col_left, col_logo, col_right = st.columns([1, 2, 1])
+        col_left, col_logo, col_right = st.columns()
         with col_logo:
             st.image(logo_img, use_container_width=True)
 except Exception:
