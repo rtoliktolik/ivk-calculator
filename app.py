@@ -163,7 +163,8 @@ if uploaded_file is not None:
             mask_pil = Image.fromarray((final_calculated_mask * 255).astype(np.uint8))
             edges = mask_pil.filter(ImageFilter.FIND_EDGES)
             edges_np = np.array(edges)
-            visual_img[edges_np > 100] =
+            # ТУТ ИСПРАВЛЕНО: Добавлен цвет прорисовки (0, 255, 0)
+            visual_img[edges_np > 100] = (0, 255, 0)
             output_pil = Image.fromarray(visual_img)
             draw = ImageDraw.Draw(output_pil)
 
