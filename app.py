@@ -1,6 +1,6 @@
 import streamlit as st
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 import cv2
 from ultralytics import YOLO
 
@@ -22,7 +22,6 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
     car_lab = np.array(car_lab).flatten()
     
-    # ПЕРЕВОД В СТАНДАРТНЫЕ ЧИСЛА PYTHON (Исключает ошибки массивов)
     L1, a1, b1 = float(car_lab[0]), float(car_lab[1]), float(car_lab[2])
     L2, a2, b2 = float(bg_lab[0]), float(bg_lab[1]), float(bg_lab[2])
     
@@ -111,8 +110,8 @@ if uploaded_file is not None:
             if np.sum(car_mask) > 0:
                 clean_paint_mask = np.clip(car_mask.astype(int) - wheels_mask.astype(int), 0, 1).astype(np.uint8)
                 
-                # Делаем умеренный отступ от краев кузова
-                struct_el = np.ones((11, 11), dtype=bool)
+                # РАСШИРИЛИ ОБЛАСТЬ: Уменьшили отступ от краев кузова до (7, 7) вместо (11, 11)
+                struct_el = np.ones((7, 7), dtype=bool)
                 from scipy.ndimage import binary_erosion
                 clean_paint_mask = binary_erosion(clean_paint_mask, structure=struct_el).astype(np.uint8)
                 
@@ -125,11 +124,10 @@ if uploaded_file is not None:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
                     
-                    # СБАЛАНСИРОВАННЫЕ ФИЛЬТРЫ ЯРКОСТИ И НАСЫЩЕННОСТИ
                     if 25 < lab[0] < 90:
                         color_saturation = np.linalg.norm(lab[1:])
-                        # СБАЛАНСИРОВАННЫЙ ПОРОГ НАСЫЩЕННОСТИ (10.0 вместо 15.0)
-                        if color_saturation > 10.0:
+                        # УМЕНЬШИЛИ ЧУВСТВИТЕЛЬНОСТЬ: Порог насыщенности 7.0 вместо 10.0
+                        if color_saturation > 7.0:
                             valid_pixels_lab.append(lab)
                             valid_coords.append((r, c))
                             saturations.append(color_saturation)
@@ -168,12 +166,24 @@ if uploaded_file is not None:
         visual_img[non_calculated_mask] = (img_np[non_calculated_mask] * 0.5 + checkerboard[non_calculated_mask] * 0.5).astype(np.uint8)
         
         output_pil = Image.fromarray(visual_img)
-        if manual_mode:
+        draw = ImageDraw.Draw(output_pil)
+        
+        # ВОЗВРАЩАЕМ ТОНКУЮ ЗЕЛЕНУЮ ЛИНИЮ КОНТУРА
+        if not manual_mode and np.sum(final_calculated_mask) > 0:
+            # Находим границы расчетной зоны математическим методом (вычитание размытия)
+            mask_pil = Image.fromarray((final_calculated_mask * 255).astype(np.uint8))
+            edges = mask_pil.filter(ImageFilter.FIND_EDGES)
+            edges_np = np.array(edges)
+            # Там где край - рисуем тонкую зеленую линию (толщина 1-2 пикселя)
+            visual_img[edges_np > 100] = [0, 255, 0]
+            output_pil = Image.fromarray(visual_img)
             draw = ImageDraw.Draw(output_pil)
+
+        if manual_mode:
             draw.line([(cx-15, cy), (cx+15, cy)], fill=(255, 0, 0), width=3)
             draw.line([(cx, cy-15), (cx, cy+15)], fill=(255, 0, 0), width=3)
             
-        st.image(output_pil, caption="Зона анализа (Чувствительность к пигменту ЛКП сбалансирована)", use_container_width=True)
+        st.image(output_pil, caption="Зона анализа (Контур и чувствительность ЛКП сбалансированы)", use_container_width=True)
 
         res = calculate_ivk_lab(dominant_car_lab)
         rating_text, rating_color = get_text_rating(res["ivk"])
@@ -189,3 +199,4 @@ if uploaded_file is not None:
             
         st.markdown(f"**Цвет кузова (чистый пигмент):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
+        st.info(f"Эталон фона зафиксирован: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (асфальт, облачно)")
