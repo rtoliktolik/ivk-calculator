@@ -5,7 +5,7 @@ import cv2
 from scipy.ndimage import binary_erosion
 from ultralytics import YOLO
 
-# Жесткая константа эталона по вашему требованию
+# Constant road background reference (Asphalt, overcast day)
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
 
 def rgb_to_lab_opencv_single(rgb_color: tuple) -> np.ndarray:
@@ -23,13 +23,13 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
     car_lab = np.array(car_lab).flatten()
     
-    L1, a1, b1 = float(car_lab[0]), float(car_lab[1]), float(car_lab[2])
-    L2, a2, b2 = float(bg_lab[0]), float(bg_lab[1]), float(bg_lab[2])
+    L1, a1, b1 = float(car_lab), float(car_lab), float(car_lab)
+    L2, a2, b2 = float(bg_lab), float(bg_lab), float(bg_lab)
     
     delta_L = abs(L1 - L2)
     delta_ab = np.sqrt((a1 - a2)**2 + (b1 - b2)**2)
     
-    # Адаптация под человеческий глаз: вес цветности увеличен в 1.8 раза
+    # Human eye adaptation: color difference weight multiplied by 1.8
     ivk = np.sqrt((delta_L * 1.0) ** 2 + (delta_ab * 1.8) ** 2)
     
     return {
@@ -39,11 +39,11 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     }
 
 def get_text_rating(ivk_value: float) -> tuple:
-    if ivk_value < 15.0: return "Очень плохо 🔴", "#FF4B4B"
-    elif ivk_value < 25.0: return "Плохо 🟠", "#FFA500"
-    elif ivk_value < 35.0: return "Удовлетворительно 🟡", "#F0D300"
-    elif ivk_value < 55.0: return "Хорошо 🟢", "#2EA043"
-    else: return "Отлично 🔵", "#007BFF"
+    if ivk_value < 15.0: return "Very Poor 🔴", "#FF4B4B"
+    elif ivk_value < 25.0: return "Poor 🟠", "#FFA500"
+    elif ivk_value < 35.0: return "Satisfactory 🟡", "#F0D300"
+    elif ivk_value < 55.0: return "Good 🟢", "#2EA043"
+    else: return "Excellent 🔵", "#007BFF"
 
 def create_checkerboard_pattern(width, height, square_size=15):
     base = np.zeros((square_size * 2, square_size * 2, 3), dtype=np.uint8)
@@ -57,12 +57,12 @@ def create_checkerboard_pattern(width, height, square_size=15):
     return pattern[0:height, 0:width]
 
 # ---------------------------------------------------------------------------
-# Веб-интерфейс Streamlit
+# Streamlit Web Interface (English Version)
 # ---------------------------------------------------------------------------
-st.title("🚗 Автоматический ИВК-калькулятор")
-st.write("Программа адаптирована под человеческое зрение. ИИ находит чистый пигмент ЛКП, игнорируя тени и колеса.")
+st.title("🚗 Automated VIC Calculator")
+st.write("The app is optimized for human visual perception. AI detects the vehicle body paint, automatically filtering out wheels, windows, and deep shadows.")
 
-uploaded_file = st.file_uploader("Шаг 1 — Загрузите фото машины", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Step 1 — Upload a vehicle photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     pil_img = Image.open(uploaded_file).convert("RGB")
@@ -74,14 +74,14 @@ if uploaded_file is not None:
     img_np = np.array(pil_img)
     h, w, _ = img_np.shape
     
-    manual_mode = st.checkbox("🎯 Включить ручную точечную корректировку")
+    manual_mode = st.checkbox("🎯 Enable manual region override")
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     dominant_car_lab = None
     
     if manual_mode:
-        st.subheader("Настройка точки контроля")
-        cx = st.slider("Позиция по горизонтали (X)", 0, w, int(w / 2))
-        cy = st.slider("Позиция по вертикали (Y)", 0, h, int(h / 2))
+        st.subheader("Manual Control Point Settings")
+        cx = st.slider("Horizontal position (X)", 0, w, int(w / 2))
+        cy = st.slider("Vertical position (Y)", 0, h, int(h / 2))
         x1, y1 = max(0, cx - 10), max(0, cy - 10)
         x2, y2 = min(w, cx + 10), min(h, cy + 10)
         final_calculated_mask[y1:y2, x1:x2] = 1
@@ -90,7 +90,7 @@ if uploaded_file is not None:
         lab_pixels = [rgb_to_lab_opencv_single(tuple(p)) for p in selected_pixels]
         dominant_car_lab = np.median(lab_pixels, axis=0)
     else:
-        with st.spinner("Нейросеть YOLOv8 изолирует кузов..."):
+        with st.spinner("YOLOv8 AI is segmenting the vehicle body..."):
             model = YOLO("yolov8n-seg.pt")
             results = model(img_np, verbose=False)
             
@@ -111,7 +111,6 @@ if uploaded_file is not None:
             if np.sum(car_mask) > 0:
                 clean_paint_mask = np.clip(car_mask.astype(int) - wheels_mask.astype(int), 0, 1).astype(np.uint8)
                 
-                # Минимальный аккуратный отступ от краев
                 struct_el = np.ones((5, 5), dtype=bool)
                 clean_paint_mask = binary_erosion(clean_paint_mask, structure=struct_el).astype(np.uint8)
                 
@@ -123,16 +122,13 @@ if uploaded_file is not None:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
                     
-                    # Максимально открытый фильтр: убираем только глухую тень и чистый белый блик
-                    if 25 < lab[0] < 92:
+                    if 25 < lab < 92:
                         color_saturation = np.linalg.norm(lab[1:])
-                        # Мягкий порог цветности — пропускает даже выбеленные участки краски
                         if color_saturation > 2.0:
                             valid_pixels_lab.append(lab)
                             valid_coords.append((r, c))
                         
                 if len(valid_pixels_lab) > 0:
-                    # Берем ВСЕ прошедшие пиксели без принудительной обрезки по процентам
                     valid_pixels_lab = np.array(valid_pixels_lab)
                     avg_pure_lab = np.median(valid_pixels_lab, axis=0)
                     
@@ -149,7 +145,7 @@ if uploaded_file is not None:
                         dominant_car_lab = np.median(valid_pixels_lab, axis=0)
                     final_calculated_mask = clean_paint_mask
             else:
-                st.error("❌ ИИ не нашел машину. Включите ручную корректировку.")
+                st.error("❌ Vehicle not detected by AI. Please enable manual override above.")
 
     if dominant_car_lab is not None:
         dominant_car_rgb = lab_to_rgb_opencv_single(dominant_car_lab)
@@ -163,12 +159,11 @@ if uploaded_file is not None:
         output_pil = Image.fromarray(visual_img)
         draw = ImageDraw.Draw(output_pil)
         
-        # Тонкая зеленая рамка-подсветка по сплошным внешним границам
         if not manual_mode and np.sum(final_calculated_mask) > 0:
             mask_pil = Image.fromarray((final_calculated_mask * 255).astype(np.uint8))
             edges = mask_pil.filter(ImageFilter.FIND_EDGES)
             edges_np = np.array(edges)
-            visual_img[edges_np > 100] = [0, 255, 0]
+            visual_img[edges_np > 100] =
             output_pil = Image.fromarray(visual_img)
             draw = ImageDraw.Draw(output_pil)
 
@@ -176,20 +171,20 @@ if uploaded_file is not None:
             draw.line([(cx-15, cy), (cx+15, cy)], fill=(255, 0, 0), width=3)
             draw.line([(cx, cy-15), (cx, cy+15)], fill=(255, 0, 0), width=3)
             
-        st.image(output_pil, caption="Зона анализа (Максимальный цельный охват кузова)", use_container_width=True)
+        st.image(output_pil, caption="Analysis Zone (Maximum paint coverage matrix)", use_container_width=True)
 
         res = calculate_ivk_lab(dominant_car_lab)
         rating_text, rating_color = get_text_rating(res["ivk"])
         
-        st.subheader("📊 Результат анализа")
-        st.markdown(f"### Визуальная заметность автомобиля: <span style='color:{rating_color}; font-weight:bold;'>{rating_text}</span>", unsafe_allow_html=True)
+        st.subheader("📊 Analysis Results")
+        st.markdown(f"### Vehicle Conspicuity Rating: <span style='color:{rating_color}; font-weight:bold;'>{rating_text}</span>", unsafe_allow_html=True)
         st.write("")
         
         col1, col2, col3 = st.columns(3)
-        with col1: st.metric("Индекс ИВК (Человеческий)", f"{res['ivk']:.2f}")
-        with col2: st.metric("Разница яркости (ΔL)", f"{res['delta_L']:.2f}")
-        with col3: st.metric("Разница тона (Δab)", f"{res['delta_ab']:.2f}")
+        with col1: st.metric("VIC Index (Human Eye)", f"{res['ivk']:.2f}")
+        with col2: st.metric("Lightness Contrast (ΔL)", f"{res['delta_L']:.2f}")
+        with col3: st.metric("Chromatic Contrast (Δab)", f"{res['delta_ab']:.2f}")
             
-        st.markdown(f"**Цвет кузова (чистый пигмент):** RGB{dominant_car_rgb}")
+        st.markdown(f"**Extracted Body Color (Pure Pigment):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
-        st.info(f"Эталон фона зафиксирован: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (асфальт, облачно)")
+        st.info(f"Constant Background Reference: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (Asphalt, Overcast)")
