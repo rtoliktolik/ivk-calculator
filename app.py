@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 import cv2
+from scipy.ndimage import binary_erosion
 from ultralytics import YOLO
 
 # Жесткая константа эталона по вашему требованию
@@ -110,42 +111,36 @@ if uploaded_file is not None:
             if np.sum(car_mask) > 0:
                 clean_paint_mask = np.clip(car_mask.astype(int) - wheels_mask.astype(int), 0, 1).astype(np.uint8)
                 
-                # МАКСИМАЛЬНЫЙ ОХВАТ: Уменьшили отступ от краев до минимума (5, 5)
+                # Минимальный аккуратный отступ от краев
                 struct_el = np.ones((5, 5), dtype=bool)
-                from scipy.ndimage import binary_erosion
                 clean_paint_mask = binary_erosion(clean_paint_mask, structure=struct_el).astype(np.uint8)
                 
                 car_indices = np.argwhere(clean_paint_mask == 1)
                 valid_pixels_lab = []
                 valid_coords = []
-                saturations = []
                 
                 for r, c in car_indices:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
                     
+                    # Максимально открытый фильтр: убираем только глухую тень и чистый белый блик
                     if 25 < lab[0] < 92:
                         color_saturation = np.linalg.norm(lab[1:])
-                        # МАКСИМАЛЬНАЯ ЧУВСТВИТЕЛЬНОСТЬ: Порог насыщенности опущен до 4.0
-                        if color_saturation > 4.0:
+                        # Мягкий порог цветности — пропускает даже выбеленные участки краски
+                        if color_saturation > 2.0:
                             valid_pixels_lab.append(lab)
                             valid_coords.append((r, c))
-                            saturations.append(color_saturation)
                         
                 if len(valid_pixels_lab) > 0:
+                    # Берем ВСЕ прошедшие пиксели без принудительной обрезки по процентам
                     valid_pixels_lab = np.array(valid_pixels_lab)
-                    cutoff = np.percentile(saturations, 60) # Сделали выборку пикселей ещё шире
-                    pure_paint_indices = [i for i, sat in enumerate(saturations) if sat >= cutoff]
+                    avg_pure_lab = np.median(valid_pixels_lab, axis=0)
                     
-                    pure_labs = valid_pixels_lab[pure_paint_indices]
-                    avg_pure_lab = np.median(pure_labs, axis=0)
-                    
-                    distances = np.linalg.norm(pure_labs - avg_pure_lab, axis=1)
+                    distances = np.linalg.norm(valid_pixels_lab - avg_pure_lab, axis=1)
                     best_idx = np.argmin(distances)
-                    dominant_car_lab = pure_labs[best_idx]
+                    dominant_car_lab = valid_pixels_lab[best_idx]
                     
-                    for idx in pure_paint_indices:
-                        r, c = valid_coords[idx]
+                    for r, c in valid_coords:
                         final_calculated_mask[r, c] = 1
                 else:
                     flat_pixels = img_np[clean_paint_mask == 1].reshape(-1, 3)
@@ -168,7 +163,7 @@ if uploaded_file is not None:
         output_pil = Image.fromarray(visual_img)
         draw = ImageDraw.Draw(output_pil)
         
-        # Тонкая зеленая рамка-подсветка
+        # Тонкая зеленая рамка-подсветка по сплошным внешним границам
         if not manual_mode and np.sum(final_calculated_mask) > 0:
             mask_pil = Image.fromarray((final_calculated_mask * 255).astype(np.uint8))
             edges = mask_pil.filter(ImageFilter.FIND_EDGES)
@@ -181,7 +176,7 @@ if uploaded_file is not None:
             draw.line([(cx-15, cy), (cx+15, cy)], fill=(255, 0, 0), width=3)
             draw.line([(cx, cy-15), (cx, cy+15)], fill=(255, 0, 0), width=3)
             
-        st.image(output_pil, caption="Зона анализа (Контур и чувствительность ЛКП сбалансированы)", use_container_width=True)
+        st.image(output_pil, caption="Зона анализа (Максимальный цельный охват кузова)", use_container_width=True)
 
         res = calculate_ivk_lab(dominant_car_lab)
         rating_text, rating_color = get_text_rating(res["ivk"])
@@ -197,3 +192,4 @@ if uploaded_file is not None:
             
         st.markdown(f"**Цвет кузова (чистый пигмент):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
+        st.info(f"Эталон фона зафиксирован: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (асфальт, облачно)")
