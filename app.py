@@ -22,17 +22,20 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
     car_lab = np.array(car_lab).flatten()
     
-    delta_L = abs(car_lab - bg_lab)
-    delta_ab = np.linalg.norm(car_lab[1:] - bg_lab[1:])
+    # ПЕРЕВОД В СТАНДАРТНЫЕ ЧИСЛА PYTHON (Исключает ошибки массивов)
+    L1, a1, b1 = float(car_lab[0]), float(car_lab[1]), float(car_lab[2])
+    L2, a2, b2 = float(bg_lab[0]), float(bg_lab[1]), float(bg_lab[2])
+    
+    delta_L = abs(L1 - L2)
+    delta_ab = np.sqrt((a1 - a2)**2 + (b1 - b2)**2)
     
     # Адаптация под человеческий глаз: вес цветности увеличен в 1.8 раза
     ivk = np.sqrt((delta_L * 1.0) ** 2 + (delta_ab * 1.8) ** 2)
     
-    # ИСПРАВЛЕНО: Безопасное извлечение чисел через метод .item()
     return {
-        "delta_L": float(np.round(delta_L, 2).item() if hasattr(delta_L, "item") else np.round(delta_L, 2)),
-        "delta_ab": float(np.round(delta_ab, 2).item() if hasattr(delta_ab, "item") else np.round(delta_ab, 2)),
-        "ivk": float(np.round(ivk, 2).item() if hasattr(ivk, "item") else np.round(ivk, 2))
+        "delta_L": round(delta_L, 2),
+        "delta_ab": round(delta_ab, 2),
+        "ivk": round(ivk, 2)
     }
 
 def get_text_rating(ivk_value: float) -> tuple:
@@ -125,6 +128,7 @@ if uploaded_file is not None:
                     # СБАЛАНСИРОВАННЫЕ ФИЛЬТРЫ ЯРКОСТИ И НАСЫЩЕННОСТИ
                     if 25 < lab[0] < 90:
                         color_saturation = np.linalg.norm(lab[1:])
+                        # СБАЛАНСИРОВАННЫЙ ПОРОГ НАСЫЩЕННОСТИ (10.0 вместо 15.0)
                         if color_saturation > 10.0:
                             valid_pixels_lab.append(lab)
                             valid_coords.append((r, c))
@@ -185,4 +189,3 @@ if uploaded_file is not None:
             
         st.markdown(f"**Цвет кузова (чистый пигмент):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
-        st.info(f"Эталон фона зафиксирован: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (асфальт, облачно)")
