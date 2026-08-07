@@ -4,8 +4,6 @@ from PIL import Image, ImageDraw, ImageFilter
 import cv2
 from scipy.ndimage import binary_erosion
 from ultralytics import YOLO
-import requests
-from io import BytesIO
 
 # Constant road background reference (Asphalt, overcast day)
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
@@ -59,19 +57,19 @@ def create_checkerboard_pattern(width, height, square_size=15):
     return pattern[0:height, 0:width]
 
 # ---------------------------------------------------------------------------
-# Streamlit Web Interface (English Version with Direct URL Logo)
+# Streamlit Web Interface (English Version with Embedded HTML Branding)
 # ---------------------------------------------------------------------------
-# GUARANTEED OVER-THE-AIR LOGO LOADING WITH CORRECT URL ALIGNMENT
-logo_url = "https://githubusercontent.com"
-try:
-    response = requests.get(logo_url, timeout=5)
-    if response.status_code == 200:
-        logo_img = Image.open(BytesIO(response.content))
-        col_left, col_logo, col_right = st.columns([1, 2, 1])
-        with col_logo:
-            st.image(logo_img, use_container_width=True)
-except Exception:
-    pass
+# STYLISH CENTRED BRAND LOGO VIA DIRECT EMBEDDED HTML
+st.markdown(
+    """
+    <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 20px;">
+        <div style="font-family: 'Arial Black', Gadget, sans-serif; font-size: 36px; font-weight: 900; letter-spacing: 2px; color: #1E3A8A; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); border: 3px solid #1E3A8A; padding: 5px 20px; border-radius: 8px;">
+            FAIRRATE<span style="color: #FF4B4B;">-X</span>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 st.title("Automated VIC Calculator")
 st.write("The app is optimized for human visual perception. AI detects the vehicle body paint, automatically filtering out wheels, windows, and deep shadows.")
