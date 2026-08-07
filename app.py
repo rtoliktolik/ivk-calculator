@@ -31,7 +31,12 @@ def rgb_to_lab_pure(rgb_color: tuple) -> np.ndarray:
     return np.array([L, a, b])
 
 def lab_to_rgb_pure(lab_color: np.ndarray) -> tuple:
-    L, a, b = float(lab_color), float(lab_color), float(lab_color)
+    # ИСПРАВЛЕНО: Безопасное извлечение элементов массива по индексам
+    lab_flat = np.array(lab_color).flatten()
+    L = float(lab_flat[0])
+    a = float(lab_flat[1])
+    b = float(lab_flat[2])
+    
     fy = (L + 16.0) / 116.0
     fx = fy + (a / 500.0)
     fz = fy - (b / 200.0)
@@ -55,7 +60,9 @@ def lab_to_rgb_pure(lab_color: np.ndarray) -> tuple:
 
 def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) -> dict:
     bg_lab = rgb_to_lab_pure(bg_rgb)
-    delta_L = abs(car_lab - bg_lab)
+    car_lab = np.array(car_lab).flatten()
+    
+    delta_L = abs(car_lab[0] - bg_lab[0])
     delta_ab = np.linalg.norm(car_lab[1:] - bg_lab[1:])
     ivk = np.linalg.norm(car_lab - bg_lab)
     
@@ -92,10 +99,9 @@ st.write("Программа работает в облаке. ИИ находи
 uploaded_file = st.file_uploader("Шаг 1 — Загрузите фото машины", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # Открываем изображение
     pil_img = Image.open(uploaded_file).convert("RGB")
     
-    # АВТОМАТИЧЕСКОЕ СЖАТИЕ ТЯЖЕЛЫХ ФОТО (Ограничиваем макс. сторону до 1200 пикселей)
+    # Автоматическое сжатие для стабильности в облаке
     max_size = 1200
     if max(pil_img.size) > max_size:
         pil_img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
@@ -140,7 +146,6 @@ if uploaded_file is not None:
             if np.sum(car_mask) > 0:
                 clean_paint_mask = np.clip(car_mask.astype(int) - wheels_mask.astype(int), 0, 1).astype(np.uint8)
                 
-                # Эрозия маски стандартным NumPy для очистки краев от травы
                 struct_el = np.ones((9, 9), dtype=bool)
                 from scipy.ndimage import binary_erosion
                 clean_paint_mask = binary_erosion(clean_paint_mask, structure=struct_el).astype(np.uint8)
@@ -152,7 +157,7 @@ if uploaded_file is not None:
                 for r, c in car_indices:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_pure(rgb)
-                    if 20 < lab[0] < 85:  # Проверка яркости L
+                    if 20 < lab[0] < 85:  # Фильтр яркости L
                         valid_pixels_lab.append(lab)
                         valid_coords.append((r, c))
                         
@@ -179,9 +184,8 @@ if uploaded_file is not None:
         visual_img[non_calculated_mask] = (img_np[non_calculated_mask] * 0.5 + checkerboard[non_calculated_mask] * 0.5).astype(np.uint8)
         
         output_pil = Image.fromarray(visual_img)
-        draw = ImageDraw.Draw(output_pil)
-        
         if manual_mode:
+            draw = ImageDraw.Draw(output_pil)
             draw.line([(cx-15, cy), (cx+15, cy)], fill=(255, 0, 0), width=3)
             draw.line([(cx, cy-15), (cx, cy+15)], fill=(255, 0, 0), width=3)
             
@@ -201,4 +205,3 @@ if uploaded_file is not None:
             
         st.markdown(f"**Цвет кузова (без бликов):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
-        st.info(f"Эталон фона зафиксирован: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (асфальт, облачно)")
