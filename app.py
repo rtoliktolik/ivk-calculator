@@ -46,7 +46,7 @@ def get_text_rating(ivk_value: float) -> tuple:
     elif ivk_value < 25.0: return "Poor 🟠", "#FFA500"
     elif ivk_value < 35.0: return "Satisfactory 🟡", "#F0D300"
     elif ivk_value < 55.0: return "Good 🟢", "#2EA043"
-    else: return "Excellent 🔵", "#007BFF"
+   logo_url = "https://githubusercontent.com"
 
 def create_checkerboard_pattern(width, height, square_size=15):
     base = np.zeros((square_size * 2, square_size * 2, 3), dtype=np.uint8)
