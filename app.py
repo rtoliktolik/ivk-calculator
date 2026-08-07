@@ -7,18 +7,21 @@ from ultralytics import YOLO
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
 
 # ---------------------------------------------------------------------------
-# Чистая математика цвета (CIE LAB без использования модулей cv2)
+# Исправленная математика цвета (Точная калибровка диапазонов PIL 0..255 и CIE LAB 0..100)
 # ---------------------------------------------------------------------------
 def rgb_to_lab_pure(rgb_color: tuple) -> np.ndarray:
     r, g, b = [v / 255.0 for v in rgb_color]
+    # sRGB -> Линейный RGB
     r = r / 12.92 if r <= 0.04045 else ((r + 0.055) / 1.055) ** 2.4
     g = g / 12.92 if g <= 0.04045 else ((g + 0.055) / 1.055) ** 2.4
     b = b / 12.92 if b <= 0.04045 else ((b + 0.055) / 1.055) ** 2.4
     
+    # Линейный RGB -> XYZ
     X = r * 0.4124564 + g * 0.3575761 + b * 0.1804375
     Y = r * 0.2126729 + g * 0.7151522 + b * 0.0721750
     Z = r * 0.0193339 + g * 0.1191920 + b * 0.9503041
     
+    # Нормирование под D65
     X, Y, Z = X / 0.95047, Y / 1.00000, Z / 1.08883
     
     def f(t):
@@ -31,11 +34,8 @@ def rgb_to_lab_pure(rgb_color: tuple) -> np.ndarray:
     return np.array([L, a, b])
 
 def lab_to_rgb_pure(lab_color: np.ndarray) -> tuple:
-    # ИСПРАВЛЕНО: Безопасное извлечение элементов массива по индексам
     lab_flat = np.array(lab_color).flatten()
-    L = float(lab_flat[0])
-    a = float(lab_flat[1])
-    b = float(lab_flat[2])
+    L, a, b = float(lab_flat[0]), float(lab_flat[1]), float(lab_flat[2])
     
     fy = (L + 16.0) / 116.0
     fx = fy + (a / 500.0)
@@ -47,12 +47,13 @@ def lab_to_rgb_pure(lab_color: np.ndarray) -> tuple:
     z = fz**3 if fz > delta else (fz - 16.0/116.0) * (3 * delta**2)
     
     X, Y, Z = x * 0.95047, y * 1.00000, z * 1.08883
+    
     r_l =  3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z
     g_l = -0.9692660 * X + 1.8760108 * Y + 0.0415560 * Z
     b_l =  0.0556434 * X - 2.0402590 * Y + 1.0572252 * Z
     
     def gamma(c):
-        return 1.055 * (c ** (1.0 / 2.4)) - 0.055 if c > 0.0031308 else 12.92 * c
+        return 1.055 * (max(0.0, c) ** (1.0 / 2.4)) - 0.055 if c > 0.0031308 else 12.92 * c
         
     return (int(np.clip(gamma(r_l) * 255.0, 0, 255)),
             int(np.clip(gamma(g_l) * 255.0, 0, 255)),
@@ -75,8 +76,8 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
 def get_text_rating(ivk_value: float) -> tuple:
     if ivk_value < 15.0: return "Очень плохо 🔴", "#FF4B4B"
     elif ivk_value < 30.0: return "Плохо 🟠", "#FFA500"
-    elif ivk_value < 50.0: return "Удовлетворительно 🟡", "#F0D300"
-    elif ivk_value < 75.0: return "Хорошо 🟢", "#2EA043"
+    elif ivk_value < 45.0: return "Удовлетворительно 🟡", "#F0D300"
+    elif ivk_value < 65.0: return "Хорошо 🟢", "#2EA043"
     else: return "Отлично 🔵", "#007BFF"
 
 def create_checkerboard_pattern(width, height, square_size=15):
@@ -91,7 +92,7 @@ def create_checkerboard_pattern(width, height, square_size=15):
     return pattern[0:height, 0:width]
 
 # ---------------------------------------------------------------------------
-# Веб-интерфейс
+# Веб-интерфейс Streamlit
 # ---------------------------------------------------------------------------
 st.title("🚗 Автоматический ИВК-калькулятор")
 st.write("Программа работает в облаке. ИИ находит кузов автомобиля и автоматически убирает колеса.")
@@ -101,7 +102,6 @@ uploaded_file = st.file_uploader("Шаг 1 — Загрузите фото ма�
 if uploaded_file is not None:
     pil_img = Image.open(uploaded_file).convert("RGB")
     
-    # Автоматическое сжатие для стабильности в облаке
     max_size = 1200
     if max(pil_img.size) > max_size:
         pil_img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
@@ -157,7 +157,8 @@ if uploaded_file is not None:
                 for r, c in car_indices:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_pure(rgb)
-                    if 20 < lab[0] < 85:  # Фильтр яркости L
+                    # Фильтр яркости L в стандартных координатах 0..100
+                    if 15 < lab[0] < 90:
                         valid_pixels_lab.append(lab)
                         valid_coords.append((r, c))
                         
@@ -205,3 +206,4 @@ if uploaded_file is not None:
             
         st.markdown(f"**Цвет кузова (без бликов):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
+        st.info(f"Эталон фона зафиксирован: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (асфальт, облачно)")
