@@ -22,7 +22,7 @@ def calculate_ivk_lab(car_lab: np.ndarray, bg_rgb=CONSTANT_ROAD_BACKGROUND_RGB) 
     bg_lab = rgb_to_lab_opencv_single(bg_rgb)
     car_lab = np.array(car_lab).flatten()
     
-    delta_L = abs(car_lab - bg_lab)
+    delta_L = abs(car_lab[0] - bg_lab[0])
     delta_ab = np.linalg.norm(car_lab[1:] - bg_lab[1:])
     
     # Адаптация под человеческий глаз: вес цветности увеличен в 1.8 раза
@@ -86,7 +86,7 @@ if uploaded_file is not None:
         lab_pixels = [rgb_to_lab_opencv_single(tuple(p)) for p in selected_pixels]
         dominant_car_lab = np.median(lab_pixels, axis=0)
     else:
-        with st.spinner("Нейросеть YOLOv8 изолирует кузов..."):
+        with st.spinner("Ннойросеть YOLOv8 изолирует кузов..."):
             model = YOLO("yolov8n-seg.pt")
             results = model(img_np, verbose=False)
             
@@ -121,18 +121,15 @@ if uploaded_file is not None:
                     rgb = tuple(img_np[r, c])
                     lab = rgb_to_lab_opencv_single(rgb)
                     
-                    # Отсекаем тени по яркости L
-                    if 35 < lab < 85:
+                    # ИСПРАВЛЕНО: Проверяем только координату яркости lab[0]
+                    if 35 < lab[0] < 88:
                         color_saturation = np.linalg.norm(lab[1:])
-                        # Фильтруем блеклую глянцевую дымку (оставляем только выраженный пигмент)
                         if color_saturation > 15.0:
                             valid_pixels_lab.append(lab)
                             valid_coords.append((r, c))
                             saturations.append(color_saturation)
                         
                 if len(valid_pixels_lab) > 0:
-                    # КЛЮЧЕВОЕИЗМЕНЕНИЕ: Берём верхние 25% самых насыщенных чистых пикселей краски
-                    # Это полностью исключает белесые отсветы и глянец из расчёта
                     valid_pixels_lab = np.array(valid_pixels_lab)
                     cutoff = np.percentile(saturations, 75)
                     pure_paint_indices = [i for i, sat in enumerate(saturations) if sat >= cutoff]
@@ -140,7 +137,6 @@ if uploaded_file is not None:
                     pure_labs = valid_pixels_lab[pure_paint_indices]
                     avg_pure_lab = np.median(pure_labs, axis=0)
                     
-                    # Находим реальный самый представительный пигмент кузова
                     distances = np.linalg.norm(pure_labs - avg_pure_lab, axis=1)
                     best_idx = np.argmin(distances)
                     dominant_car_lab = pure_labs[best_idx]
@@ -188,4 +184,3 @@ if uploaded_file is not None:
             
         st.markdown(f"**Цвет кузова (чистый пигмент):** RGB{dominant_car_rgb}")
         st.markdown(f'<div style="background-color: rgb{dominant_car_rgb}; width: 100px; height: 30px; border-radius: 5px; border: 1px solid #000;"></div>', unsafe_allow_html=True)
-        st.info(f"Эталон фона зафиксирован: RGB{CONSTANT_ROAD_BACKGROUND_RGB} (асфальт, облачно)")
