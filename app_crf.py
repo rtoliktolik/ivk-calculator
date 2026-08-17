@@ -101,7 +101,6 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
-        # ВОЗВРАЩЕНО: Автоматический AI-режим включен по умолчанию (manual_mode = False)
         manual_mode = st.checkbox("🎯 Enable manual target correction", value=False)
         final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
         dominant_bgr = None
@@ -113,15 +112,14 @@ if uploaded_file is not None:
             x1, y1 = max(0, cx - 10), max(0, cy - 10)
             x2, y2 = min(w, cx + 10), min(h, cy + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
-            # Извлекаем цвет точки в формате чистых целых чисел Python
-            dominant_bgr = [int(img[cy, cx][0]), int(img[cy, cx][1]), int(img[cy, cx][2])]
+            dominant_bgr = [int(c) for c in img[cy, cx]]
         else:
             with st.spinner("AI is isolating clean paintwork..."):
                 model = YOLO("yolov8n-seg.pt")
                 results = model(img, verbose=False)
                 
                 car_mask = np.zeros((h, w), dtype=np.uint8)
-                VALID_VEHICLE_CLASSES = [2, 5, 7] # Легковая, автобус, грузовик
+                VALID_VEHICLE_CLASSES = [2, 5, 7]
                 
                 for result in results:
                     if result.masks is not None:
@@ -140,6 +138,7 @@ if uploaded_file is not None:
                     if len(car_pixels_bgr) > 0:
                         final_calculated_mask[clean_paint_mask == 1] = 1
                         mean_bgr = np.mean(car_pixels_bgr, axis=0)
+                        # ИСПРАВЛЕНО: Прямое разложение усредненных каналов BGR
                         dominant_bgr = [int(mean_bgr[0]), int(mean_bgr[1]), int(mean_bgr[2])]
                     else:
                         final_calculated_mask[car_mask == 1] = 1
@@ -156,7 +155,6 @@ if uploaded_file is not None:
                 visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
                 cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
             else:
-                # ВОЗВРАЩЕНО: Отрисовка красивого зелёного автоматического контура
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
                 
@@ -164,10 +162,12 @@ if uploaded_file is not None:
 
     with col_right_data:
         if dominant_bgr is not None:
-            # Извлекаем БЕЗОПАСНЫЕ живые переменные BGR
-            b_val, g_val, r_val = dominant_bgr[0], dominant_bgr[1], dominant_bgr[2]
+            # Безопасное чтение каналов BGR
+            b_val = dominant_bgr[0]
+            g_val = dominant_bgr[1]
+            r_val = dominant_bgr[2]
             
-            # Цветовой анализ в пространстве CIELAB на основе РЕАЛЬНОГО цвета машины
+            # Цветовой анализ в пространстве CIELAB
             pixel_bgr_img = np.uint8([[[b_val, g_val, r_val]]])
             pixel_rgb_img = cv2.cvtColor(pixel_bgr_img, cv2.COLOR_BGR2RGB)
             pixel_rgb_f32 = pixel_rgb_img.astype(np.float32) / 255.0
@@ -178,13 +178,12 @@ if uploaded_file is not None:
             bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
             bg_lab = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
-            # Живые математические вычисления
-            delta_L = float(abs(float(pixel_lab[0]) - float(bg_lab[0])))
+            delta_L = float(abs(float(pixel_lab) - float(bg_lab)))
             delta_ab = float(np.linalg.norm(pixel_lab[1:] - bg_lab[1:]))
             ivk_value = float(np.linalg.norm(pixel_lab - bg_lab))
             predicted_crf = predict_crf_by_function(ivk_value)
             
-            # Динамические вычисления финансовых показателей
+            # Финансовые вычисления
             val_annual = base_premium_annual * predicted_crf
             val_monthly = val_annual / 12.0
             d_annual = val_annual - base_premium_annual
@@ -203,3 +202,5 @@ if uploaded_file is not None:
             
             # --- БЛОК СТРАХОВОЙ ПРЕМИИ ---
             st.markdown("---")
+            st.subheader("➡️ Smart Insurance Premium Adjustment")
+            st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
