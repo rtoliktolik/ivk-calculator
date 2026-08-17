@@ -225,5 +225,5 @@ if uploaded_file is not None:
         m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
         m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
 
-    # --- ПРИНУДИТЕЛЬНЫЙ ВЫВОД ПОДВАЛА НА ВСЮ ШИРИНУ ЭКРАНА ---
+    # --- СЕКЦИЯ ПОДВАЛА НА ВСЮ ШИРИНУ ---
     st.markdown("---")
