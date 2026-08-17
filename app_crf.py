@@ -116,9 +116,7 @@ st.markdown("---")
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
-st.sidebar.markdown("---")
 st.sidebar.header("💰 Insurance Profile")
-
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
@@ -131,7 +129,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
-    # ➡️ ПРЕДВАРИТЕЛЬНЫЙ ЧЕСТНЫЙ РАСЧЕТ ЦВЕТА КУЗОВА
+    # ➡️ ПРЕДВАРИТЕЛЬНЫЙ ВЫСОКОТОЧНЫЙ РАСЧЕТ ЦВЕТА КУЗОВА
     temp_mask = np.zeros((h, w), dtype=np.uint8)
     r_val, g_val, b_val = 128, 128, 128
     
@@ -173,11 +171,10 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
-        # ТВОЯ ГЕНИАЛЬНАЯ ИДЕЯ: Интерактивный прямоугольник зафиксированного цвета теперь ВСЕГДА В САМОМ ВЕРХУ левой колонки!
+        # Прямоугольник зафиксированного цвета ВСЕГДА ВВЕРХУ левой колонки
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 42px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
         
-        # Переключатель ручного прицела
         manual_mode = st.checkbox("🎯 Enable manual target correction", value=False, key="manual_checkbox")
         final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
         
@@ -191,7 +188,6 @@ if uploaded_file is not None:
         else:
             final_calculated_mask = temp_mask
 
-        # Отрисовка сканирующей зоны на картинке
         visual_img = img.copy()
         if manual_mode:
             ch_p = create_checkerboard_pattern(w, h)
@@ -207,7 +203,6 @@ if uploaded_file is not None:
         st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
     with col_right_data:
-        # Перевод цвета замера в LAB спектр
         p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
         
         delta_L = float(abs(p_L - BG_L))
@@ -229,3 +224,7 @@ if uploaded_file is not None:
             st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
         
         status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
+        st.write(f"**Current Visibility Status:** {status_text}")
+        
+        st.markdown("---")
+        st.subheader("➡️ Smart Insurance Premium Adjustment")
