@@ -18,7 +18,6 @@ def predict_crf_by_function(target_ivk: float) -> float:
     predicted_crf = float(np.interp(target_ivk, XP_POINTS, FP_POINTS))
     return float(np.round(predicted_crf, 2))
 
-# ТРЮК ОПТИМИЗАЦИИ: Кэшируем модель YOLO, чтобы она загружалась в память облака мгновенно
 @st.cache_resource
 def load_yolo_model():
     return YOLO("yolov8n-seg.pt")
@@ -127,7 +126,7 @@ st.sidebar.header("💰 Insurance Profile")
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# Пустой контейнер в боковой панели для мгновенного вывода расчетов
+# Контейнер в боковой панели для мгновенного вывода расчетов
 sidebar_calc_space = st.sidebar.empty()
 
 # --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
@@ -138,7 +137,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
-    # ➡️ ВЫЧИСЛЕНИЕ МАСКИ И ЦВЕТА КУЗОВА
+    # ВЫЧИСЛЕНИЕ МАСКИ И ЦВЕТА КУЗОВА
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     r_val, g_val, b_val = 128, 128, 128
     
@@ -186,15 +185,15 @@ if uploaded_file is not None:
     base_premium_monthly = float(base_premium_annual / 12.0)
     val_annual = float(base_premium_annual * predicted_crf)
     val_monthly = float(val_annual / 12.0)
-    d_annual = float(val_annual - base_premium_annual)
-    d_monthly = float(val_monthly - base_premium_monthly)
+    get_d_annual = float(val_annual - base_premium_annual)
+    get_d_monthly = float(val_monthly - base_premium_monthly)
 
-    # ➡️ ОТРИСОВКА В БОКОВОЙ ПАНЕЛИ
+    # ОТРИСОВКА В БОКОВОЙ ПАНЕЛИ
     with sidebar_calc_space.container():
         st.write("**🧮 Live Premium Calculation**")
         st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr ({base_premium_monthly:.2f} {currency_symbol}/mo)")
-        st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
-        st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
+        st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{get_d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
+        st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{get_d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
 
     # СТРОИМ СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
     col_left_img, col_right_data = st.columns(2)
@@ -221,4 +220,6 @@ if uploaded_file is not None:
         with col_ivk:
             st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
         with col_crf:
-            # ИСПРАВЛЕНО НАВСЕГДА: Принудительный перевод в строковый тип str() исключает любые скрытые сбои Streamlit!
+            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
+        
+        status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
