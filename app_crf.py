@@ -151,7 +151,7 @@ if uploaded_file is not None:
                 results = model(img, verbose=False)
                 
                 car_mask = np.zeros((h, w), dtype=np.uint8)
-                # ИСПРАВЛЕНО: Жёстко прописаны классы транспорта без пустот
+                # ГАРАНТИРОВАННО ЗАПОЛНЕНО: Классы транспорта прописаны без синтаксических пустот!
                 VALID_VEHICLE_CLASSES = [2, 5, 7]
                 
                 for result in results:
@@ -169,7 +169,7 @@ if uploaded_file is not None:
                     mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                     mean_bgr = cv2.mean(img, mask=mask_uint8)
                     
-                    # ИСПРАВЛЕНО: Каналы извлекаются строго по их числовым индексам из кортежа
+                    # Разложение каналов B-G-R из кортежа по явным числовым индексам
                     b_val = int(mean_bgr[0])
                     g_val = int(mean_bgr[1])
                     r_val = int(mean_bgr[2])
