@@ -63,7 +63,6 @@ def create_checkerboard_pattern(width, height, square_size=15):
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
-# Стилизация шрифтов, чтобы показатели не уходили в троеточия
 st.markdown("""
     <style>
     [data-testid="stMetricValue"] { font-size: 2.0rem !important; font-weight: bold !important; }
@@ -120,7 +119,7 @@ if uploaded_file is not None:
                 results = model(img, verbose=False)
                 
                 car_mask = np.zeros((h, w), dtype=np.uint8)
-                VALID_VEHICLE_CLASSES = [2, 5, 7] # 2: легковая машина, 5: автобус, 7: грузовик
+                VALID_VEHICLE_CLASSES = [2, 5, 7]
                 
                 for result in results:
                     if result.masks is not None:
@@ -160,7 +159,6 @@ if uploaded_file is not None:
 
     with col_right_data:
         if dominant_bgr is not None:
-            # Преобразование замерянного пикселя в Lab
             pixel_bgr = np.uint8([[list(dominant_bgr)]])
             pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
             pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
@@ -171,23 +169,21 @@ if uploaded_file is not None:
             bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
             bg_lab = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
-            # Живые расчеты из точки прицела ползунков
+            # Расчет живых значений на основе выбранной точкой позиции
             delta_L = float(abs(float(pixel_lab[0]) - float(bg_lab[0])))
             delta_ab = float(np.linalg.norm(pixel_lab[1:] - bg_lab[1:]))
             ivk_value = float(np.linalg.norm(pixel_lab - bg_lab))
             predicted_crf = predict_crf_by_function(ivk_value)
             
-            # Чтение каналов цвета RGB
+            # Безопасное попиксельное чтение цветовых каналов
             rgb_flat = pixel_rgb.flatten()
-            r_val = int(rgb_flat[0])
-            g_val = int(rgb_flat[1])
-            b_val = int(rgb_flat[2])
+            r_val, g_val, b_val = int(rgb_flat[0]), int(rgb_flat[1]), int(rgb_flat[2])
             
-            # Финансовая математика
-            adjusted_premium_annual = base_premium_annual * predicted_crf
-            adjusted_premium_monthly = adjusted_premium_annual / 12.0
-            delta_annual = adjusted_premium_annual - base_premium_annual
-            delta_monthly = adjusted_premium_monthly - base_premium_monthly
+            # Финансовые динамические вычисления
+            val_annual = base_premium_annual * predicted_crf
+            val_monthly = val_annual / 12.0
+            d_annual = val_annual - base_premium_annual
+            d_monthly = val_monthly - base_premium_monthly
             
             st.subheader("📊 Express Analysis Results")
             
@@ -205,6 +201,6 @@ if uploaded_file is not None:
             st.subheader("➡️ Smart Insurance Premium Adjustment")
             st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
             
+            # Критические строчки st.metric записаны в одну строку без разрывов
             col_fin_y, col_fin_m = st.columns(2)
             with col_fin_y:
-                st.metric(
