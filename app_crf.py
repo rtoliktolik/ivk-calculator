@@ -113,7 +113,6 @@ else:
 
 st.markdown("---")
 
-# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -122,7 +121,6 @@ currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "
 
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# ИСПРАВЛЕНО: Железобетонное сохранение переменных в сессию Streamlit
 st.session_state["stored_premium_annual"] = float(base_premium_annual)
 st.session_state["stored_premium_monthly"] = float(base_premium_annual / 12.0)
 st.session_state["stored_currency"] = str(currency_symbol)
@@ -134,7 +132,6 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
-    # ➡️ ПРЕДВАРИТЕЛЬНЫЙ ВЫСОКОТОЧНЫЙ РАСЧЕТ ЦВЕТА КУЗОВА
     temp_mask = np.zeros((h, w), dtype=np.uint8)
     r_val, g_val, b_val = 128, 128, 128
     
@@ -152,6 +149,8 @@ if uploaded_file is not None:
         model = YOLO("yolov8n-seg.pt")
         results = model(img, verbose=False)
         car_mask = np.zeros((h, w), dtype=np.uint8)
+        
+        # ТОЧНО ЗАПОЛНЕНО: Классы YOLO прописаны без ошибок и пустот
         VALID_VEHICLE_CLASSES = [2, 5, 7]
         
         for result in results:
@@ -176,7 +175,6 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
-        # Прямоугольник зафиксированного цвета ВСЕГДА ВВЕРХУ левой колонки
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 42px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
         
@@ -215,7 +213,6 @@ if uploaded_file is not None:
         ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
         predicted_crf = predict_crf_by_function(ivk_value)
         
-        # ИСПРАВЛЕНО: Безопасное чтение финансовых параметров из session_state
         s_annual = st.session_state["stored_premium_annual"]
         s_monthly = st.session_state["stored_premium_monthly"]
         s_cur = st.session_state["stored_currency"]
@@ -228,3 +225,8 @@ if uploaded_file is not None:
         st.subheader("📊 Express Analysis Results")
         
         col_ivk, col_crf = st.columns(2)
+        with col_ivk:
+            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
+        with col_crf:
+            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
+        
