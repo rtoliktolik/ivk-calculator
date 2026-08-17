@@ -151,6 +151,7 @@ if uploaded_file is not None:
                 results = model(img, verbose=False)
                 
                 car_mask = np.zeros((h, w), dtype=np.uint8)
+                # ИСПРАВЛЕНО: Жёстко прописаны классы транспорта без пустот
                 VALID_VEHICLE_CLASSES = [2, 5, 7]
                 
                 for result in results:
@@ -168,7 +169,7 @@ if uploaded_file is not None:
                     mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                     mean_bgr = cv2.mean(img, mask=mask_uint8)
                     
-                    # ИСПРАВЛЕНО: Каналы BGR разложены по строгим числовым индексам кортежа
+                    # ИСПРАВЛЕНО: Каналы извлекаются строго по их числовым индексам из кортежа
                     b_val = int(mean_bgr[0])
                     g_val = int(mean_bgr[1])
                     r_val = int(mean_bgr[2])
@@ -222,4 +223,3 @@ if uploaded_file is not None:
         
         st.markdown("---")
         st.write(f"**Light Contrast ΔL:** {delta_L:.2f}")
-        st.write(f"**Chromatic Contrast Δab:** {delta_ab:.2f}")
