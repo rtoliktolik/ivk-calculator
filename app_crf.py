@@ -63,11 +63,11 @@ def create_checkerboard_pattern(width, height, square_size=15):
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
-# Оптимизировали размер шрифта с 3.5rem до 2.2rem, чтобы текст "u.e./year" больше не обрезался точками!
+# Стилизация подписей, предотвращающая появление точек вместо текста
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 2.2rem !important; font-weight: bold !important; }
-    [data-testid="stMetricLabel"] { font-size: 1.1rem !important; }
+    [data-testid="stMetricValue"] { font-size: 2.0rem !important; font-weight: bold !important; }
+    [data-testid="stMetricLabel"] { font-size: 1.0rem !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -86,7 +86,6 @@ db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Insurance Profile")
 
-# ДОБАВЛЕНО: Выбор значка валюты для кастомизации под любую страну мира
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
@@ -172,15 +171,17 @@ if uploaded_file is not None:
             bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
             bg_lab = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
-            # Полностью «живые» математические расчёты на основе реального пикселя под прицелом!
+            # Живые математические расчёты из точки замера
             delta_L = float(abs(float(pixel_lab[0]) - float(bg_lab[0])))
             delta_ab = float(np.linalg.norm(pixel_lab[1:] - bg_lab[1:]))
             ivk_value = float(np.linalg.norm(pixel_lab - bg_lab))
             predicted_crf = predict_crf_by_function(ivk_value)
             
-            # Чтение реальных каналов RGB из точки замера
+            # ИСПРАВЛЕНО: Корректное попиксельное чтение каналов с индексами массивов
             rgb_flat = pixel_rgb.flatten()
-            r_val, g_val, b_val = int(rgb_flat[0]), int(rgb_flat[1]), int(rgb_flat[2])
+            r_val = int(rgb_flat[0])
+            g_val = int(rgb_flat[1])
+            b_val = int(rgb_flat[2])
             
             # Динамические финансовые вычисления
             adjusted_premium_annual = base_premium_annual * predicted_crf
@@ -203,3 +204,6 @@ if uploaded_file is not None:
             st.markdown("---")
             st.subheader("➡️ Smart Insurance Premium Adjustment")
             st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
+            
+            col_fin_y, col_fin_m = st.columns(2)
+            with col_fin_y:
