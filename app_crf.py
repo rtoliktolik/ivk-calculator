@@ -90,8 +90,8 @@ def create_checkerboard_pattern(width, height, square_size=15):
     base[0:square_size, 0:square_size] = (240, 240, 240)
     base[square_size:, square_size:] = (240, 240, 240)
     base[0:square_size, square_size:] = (200, 200, 200)
-    base[square_size:, 0:square_size] = (200, 200, 200)
-    return np.tile(base, (int(np.ceil(height / (square_size * 2))), int(np.ceil(width / (square_size * 2))), 1))[0:height, 0:width]
+    st_b = np.tile(base, (int(np.ceil(height / (square_size * 2))), int(np.ceil(width / (square_size * 2))), 1))
+    return st_b[0:height, 0:width]
 
 # ---------------------------------------------------------------------------
 # Web Interface Configuration
@@ -151,7 +151,6 @@ if uploaded_file is not None:
                 results = model(img, verbose=False)
                 
                 car_mask = np.zeros((h, w), dtype=np.uint8)
-                # Жёстко прописаны классы транспорта (2-car, 5-bus, 7-truck)
                 VALID_VEHICLE_CLASSES = [2, 5, 7]
                 
                 for result in results:
@@ -169,7 +168,7 @@ if uploaded_file is not None:
                     mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                     mean_bgr = cv2.mean(img, mask=mask_uint8)
                     
-                    # Безопасное попиксельное извлечение каналов B-G-R из кортежа mean_bgr
+                    # ПРАВИЛЬНЫЙ КВАТРО-СИНТАКСИС ДЛЯ КОРТЕЖА OPENCV (через квадратные скобки)
                     b_val = int(mean_bgr[0])
                     g_val = int(mean_bgr[1])
                     r_val = int(mean_bgr[2])
@@ -217,9 +216,12 @@ if uploaded_file is not None:
         
         col_metrics_y, col_metrics_m = st.columns(2)
         with col_metrics_y:
-            st.metric(label="Adjust Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
+            st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
         with col_metrics_m:
-            st.metric(label="Adjust Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
+            st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
         
         st.markdown("---")
         st.write(f"**Light Contrast ΔL:** {delta_L:.2f}")
+        st.write(f"**Chromatic Contrast Δab:** {delta_ab:.2f}")
+
+    # --- СЕКЦИЯ ПОДВАЛА НА ВСЮ ШИРИНУ ЭКРАНА ---
