@@ -63,10 +63,11 @@ def create_checkerboard_pattern(width, height, square_size=15):
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
+# Оптимизировали размер шрифта с 3.5rem до 2.2rem, чтобы текст "u.e./year" больше не обрезался точками!
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 3.5rem !important; font-weight: bold !important; }
-    [data-testid="stMetricLabel"] { font-size: 1.3rem !important; }
+    [data-testid="stMetricValue"] { font-size: 2.2rem !important; font-weight: bold !important; }
+    [data-testid="stMetricLabel"] { font-size: 1.1rem !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -84,7 +85,11 @@ db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1
 
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Insurance Profile")
-base_premium_annual = st.sidebar.number_input(label="Base Annual Premium (Your tariff):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
+
+# ДОБАВЛЕНО: Выбор значка валюты для кастомизации под любую страну мира
+currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
+
+base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 base_premium_monthly = base_premium_annual / 12.0
 
 # --- ОСНОВНОЙ КОНТЕНТ ---
@@ -116,7 +121,7 @@ if uploaded_file is not None:
                 results = model(img, verbose=False)
                 
                 car_mask = np.zeros((h, w), dtype=np.uint8)
-                VALID_VEHICLE_CLASSES = [2, 5, 7] # 2: car, 5: bus, 7: truck
+                VALID_VEHICLE_CLASSES = [2, 5, 7]
                 
                 for result in results:
                     if result.masks is not None:
@@ -156,19 +161,28 @@ if uploaded_file is not None:
 
     with col_right_data:
         if dominant_bgr is not None:
+            # Преобразование цвета и пространства Lab
             pixel_bgr = np.uint8([[list(dominant_bgr)]])
             pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
+            pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
+            pixel_lab = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
-            # Демо-значения со скриншота
-            ivk_value = 75.99
-            predicted_crf = 0.94
-            delta_L = 10.34
-            delta_ab = 75.28
+            bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
+            bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
+            bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
+            bg_lab = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
-            # Цветовые каналы
-            r_val, g_val, b_val = 225, 85, 36
+            # Полностью «живые» математические расчёты на основе реального пикселя под прицелом!
+            delta_L = float(abs(float(pixel_lab[0]) - float(bg_lab[0])))
+            delta_ab = float(np.linalg.norm(pixel_lab[1:] - bg_lab[1:]))
+            ivk_value = float(np.linalg.norm(pixel_lab - bg_lab))
+            predicted_crf = predict_crf_by_function(ivk_value)
             
-            # Финансовые вычисления
+            # Чтение реальных каналов RGB из точки замера
+            rgb_flat = pixel_rgb.flatten()
+            r_val, g_val, b_val = int(rgb_flat[0]), int(rgb_flat[1]), int(rgb_flat[2])
+            
+            # Динамические финансовые вычисления
             adjusted_premium_annual = base_premium_annual * predicted_crf
             adjusted_premium_monthly = adjusted_premium_annual / 12.0
             delta_annual = adjusted_premium_annual - base_premium_annual
@@ -188,22 +202,4 @@ if uploaded_file is not None:
             # --- БЛОК СТРАХОВОЙ ПРЕМИИ ---
             st.markdown("---")
             st.subheader("➡️ Smart Insurance Premium Adjustment")
-            st.write(f"Base profile: **{base_premium_annual:.2f} u.e./year** ({base_premium_monthly:.2f} u.e./month).")
-            
-            col_fin_y, col_fin_m = st.columns(2)
-            with col_fin_y:
-                st.metric(label="Adjusted Annual Premium", value=f"{adjusted_premium_annual:.2f} u.e./year", delta=f"{delta_annual:.2f} u.e./year", delta_color="inverse")
-            with col_fin_m:
-                st.metric(label="Adjusted Monthly Premium", value=f"{adjusted_premium_monthly:.2f} u.e./month", delta=f"{delta_monthly:.2f} u.e./month", delta_color="inverse")
-            
-            st.markdown("---")
-            m1, m2 = st.columns(2)
-            m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
-            m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
-            
-            # Отображение цвета кузова машины
-            st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
-            
-            # ИСПРАВЛЕНО: Теперь массив цвета инициализируется корректно без синтаксических пустот
-            pure_color_block = np.zeros((60, 400, 3), dtype=np.uint8)
-            pure_color_block[:] = [r_val, g_val, b_val]
+            st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
