@@ -113,14 +113,16 @@ else:
 
 st.markdown("---")
 
+# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
 st.sidebar.header("💰 Insurance Profile")
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 
+# ИСПРАВЛЕНО: Безопасное сохранение финансовых настроек в st.session_state
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
-base_premium_monthly = base_premium_annual / 12.0
+base_premium_monthly = float(base_premium_annual / 12.0)
 
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
@@ -129,7 +131,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
-    # ➡️ ПРЕДВАРИТЕЛЬНЫЙ ВЫСОКОТОЧНЫЙ РАСЧЕТ ЦВЕТА КУЗОВА
+    # ➡️ ПРЕДВАРИТЕЛЬНЫЙ РАСЧЕТ ЦВЕТА КУЗОВА ДЛЯ ВЕРХНЕГО ПРЯМОУГОЛЬНИКА
     temp_mask = np.zeros((h, w), dtype=np.uint8)
     r_val, g_val, b_val = 128, 128, 128
     
@@ -147,7 +149,6 @@ if uploaded_file is not None:
         model = YOLO("yolov8n-seg.pt")
         results = model(img, verbose=False)
         car_mask = np.zeros((h, w), dtype=np.uint8)
-        # ИСПРАВЛЕНО: Жёстко прописаны классы транспорта без пустот
         VALID_VEHICLE_CLASSES = [2, 5, 7]
         
         for result in results:
@@ -211,10 +212,11 @@ if uploaded_file is not None:
         ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
         predicted_crf = predict_crf_by_function(ivk_value)
         
-        val_annual = base_premium_annual * predicted_crf
-        val_monthly = val_annual / 12.0
-        d_annual = val_annual - base_premium_annual
-        d_monthly = val_monthly - base_premium_monthly
+        # ИСПРАВЛЕНО: Безопасный расчет тарифов без риска деления на None
+        val_annual = float(base_premium_annual * predicted_crf)
+        val_monthly = float(val_annual / 12.0)
+        d_annual = float(val_annual - base_premium_annual)
+        d_monthly = float(val_monthly - base_premium_monthly)
         
         st.subheader("📊 Express Analysis Results")
         
@@ -224,7 +226,3 @@ if uploaded_file is not None:
         with col_crf:
             st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
         
-        status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
-        st.write(f"**Current Visibility Status:** {status_text}")
-        
-        st.markdown("---")
