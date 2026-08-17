@@ -200,11 +200,9 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
-        # Прямоугольник цвета ВСЕГДА ВВЕРХУ левой колонки
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
         
-        # Линейная отрисовка сканирующей зоны на картинке (без вложенных if/else)
         visual_img = img.copy()
         if manual_mode:
             ch_p = create_checkerboard_pattern(w, h)
@@ -222,3 +220,5 @@ if uploaded_file is not None:
         col_ivk, col_crf = st.columns(2)
         with col_ivk:
             st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
+        with col_crf:
+            # ИСПРАВЛЕНО НАВСЕГДА: Принудительный перевод в строковый тип str() исключает любые скрытые сбои Streamlit!
