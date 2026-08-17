@@ -153,6 +153,7 @@ if uploaded_file is not None:
                 results = model(img, verbose=False)
                 
                 car_mask = np.zeros((h, w), dtype=np.uint8)
+                # ИСПРАВЛЕНО: Заполнена пустая переменная классов YOLO
                 VALID_VEHICLE_CLASSES = [2, 5, 7]
                 
                 for result in results:
@@ -167,11 +168,11 @@ if uploaded_file is not None:
                     clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
                     final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
                     
-                    # ИСПРАВЛЕНО: Безопасное извлечение каналов BGR по их точным индексам в кортеже
-                    mean_bgr = cv2.mean(img, mask=final_calculated_mask)
-                    b_val = int(mean_bgr[0])
-                    g_val = int(mean_bgr[1])
-                    r_val = int(mean_bgr[2])
+                    car_pixels = img[final_calculated_mask == 1]
+                    mean_color = np.mean(car_pixels, axis=0)
+                    b_val = int(mean_color[0])
+                    g_val = int(mean_color[1])
+                    r_val = int(mean_color[2])
                 else:
                     st.error("❌ AI could not find a vehicle. Please enable manual target correction.")
 
@@ -225,4 +226,4 @@ if uploaded_file is not None:
         m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
         m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
 
-    # --- СЕКЦИЯ ПОДВАЛА НА ВСЮ ШИРИНУ (БЕЗ ОШИБОК) ---
+    # --- СЕКЦИЯ ПОДВАЛА НА ВСЮ ШИРИНУ ---
