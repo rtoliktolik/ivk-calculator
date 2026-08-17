@@ -136,7 +136,6 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
-        # Ручной высокоточный прицел замера цвета включен по умолчанию
         st.markdown("**🎯 Position Crosshair over target paintwork:**")
         cx = st.slider("Horizontal (X)", 0, w, int(w * 0.34), step=2)
         cy = st.slider("Vertical (Y)", 0, h, int(h * 0.48), step=2)
@@ -206,7 +205,7 @@ if uploaded_file is not None:
     st.write("### 🎨 Isolated Paintwork Color Block")
     st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
     
-    # ТЕПЕРЬ ПРЯМОУГОЛЬНИК СТАНЕТ РЕАЛЬНО СИНИМ (ИЛИ ЛЮБЫМ ДРУГИМ ЖИВЫМ ЦВЕТОМ)
+    # HTML-отрисовка прямоугольника живого цвета
     st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 75px; border-radius: 6px; border: 1px solid #bbb; margin-bottom: 12px;"></div>', unsafe_allow_html=True)
     st.caption("Isolated Paint Shade Workspace")
     
@@ -219,10 +218,9 @@ if uploaded_file is not None:
     st.markdown("---")
     st.write("### 📈 Continuous Accident Risk Regression Curve")
     
-    # Живой график регрессии Plotly
+    # Исправленное построение интерактивного графика Plotly (все скобки закрыты!)
     ivk_axis = np.linspace(10.0, 90.0, 300)
     crf_axis = np.interp(ivk_axis, XP_POINTS, FP_POINTS)
     
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=ivk_axis, y=crf_axis, mode='lines', name='Regression Curve', line=dict(color='royalblue', width=3)))
-    fig.add_trace(go.Scatter(
