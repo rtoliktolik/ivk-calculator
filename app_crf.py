@@ -19,7 +19,6 @@ def predict_crf_by_function(target_ivk: float) -> float:
     return float(np.round(predicted_crf, 2))
 
 def rgb_to_lab(r, g, b):
-    # Математически точный конвертер RGB -> CIELAB для живого анализа цвета
     var_R = (r / 255.0)
     var_G = (g / 255.0)
     var_B = (b / 255.0)
@@ -152,7 +151,6 @@ if uploaded_file is not None:
                 results = model(img, verbose=False)
                 
                 car_mask = np.zeros((h, w), dtype=np.uint8)
-                # ИСПРАВЛЕНО: Заполнена критическая переменная классов YOLO для транспорта
                 VALID_VEHICLE_CLASSES = [2, 5, 7]
                 
                 for result in results:
@@ -170,7 +168,7 @@ if uploaded_file is not None:
                     mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                     mean_bgr = cv2.mean(img, mask=mask_uint8)
                     
-                    # Полное попиксельное извлечение живых каналов BGR
+                    # ИСПРАВЛЕНО: Извлечение строго по индивидуальным индексам кортежа BGR
                     b_val = int(mean_bgr[0])
                     g_val = int(mean_bgr[1])
                     r_val = int(mean_bgr[2])
@@ -223,3 +221,6 @@ if uploaded_file is not None:
             st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
         
         st.markdown("---")
+        m1, m2 = st.columns(2)
+        m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
+        m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
