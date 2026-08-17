@@ -169,17 +169,19 @@ if uploaded_file is not None:
             bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
             bg_lab = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
-            # Расчет живых значений на основе выбранной точкой позиции
-            delta_L = float(abs(float(pixel_lab[0]) - float(bg_lab[0])))
+            # Полностью живой расчет параметров по точке прицела
+            delta_L = float(abs(float(pixel_lab) - float(bg_lab)))
             delta_ab = float(np.linalg.norm(pixel_lab[1:] - bg_lab[1:]))
             ivk_value = float(np.linalg.norm(pixel_lab - bg_lab))
             predicted_crf = predict_crf_by_function(ivk_value)
             
-            # Безопасное попиксельное чтение цветовых каналов
+            # Извлечение цветовых каналов
             rgb_flat = pixel_rgb.flatten()
-            r_val, g_val, b_val = int(rgb_flat[0]), int(rgb_flat[1]), int(rgb_flat[2])
+            r_val = int(rgb_flat[0])
+            g_val = int(rgb_flat[1])
+            b_val = int(rgb_flat[2])
             
-            # Финансовые динамические вычисления
+            # Финансовый блок
             val_annual = base_premium_annual * predicted_crf
             val_monthly = val_annual / 12.0
             d_annual = val_annual - base_premium_annual
@@ -196,11 +198,9 @@ if uploaded_file is not None:
             status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
             st.write(f"**Current Visibility Status:** {status_text}")
             
-            # --- БЛОК СТРАХОВОЙ ПРЕМИИ ---
             st.markdown("---")
             st.subheader("➡️ Smart Insurance Premium Adjustment")
             st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
             
-            # Критические строчки st.metric записаны в одну строку без разрывов
-            col_fin_y, col_fin_m = st.columns(2)
-            with col_fin_y:
+            # Избавились от колонок with col_fin, чтобы исключить риск IndentationError при вставке
+            st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
