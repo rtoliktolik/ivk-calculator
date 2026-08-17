@@ -19,7 +19,6 @@ def predict_crf_by_function(target_ivk: float) -> float:
     return float(np.round(predicted_crf, 2))
 
 def rgb_to_lab(r, g, b):
-    # Математически точный конвертер RGB -> CIELAB
     var_R = (r / 255.0)
     var_G = (g / 255.0)
     var_B = (b / 255.0)
@@ -95,7 +94,7 @@ def create_checkerboard_pattern(width, height, square_size=15):
     return np.tile(base, (int(np.ceil(height / (square_size * 2))), int(np.ceil(width / (square_size * 2))), 1))[0:height, 0:width]
 
 # ---------------------------------------------------------------------------
-# Web Interface
+# Web Interface Configuration
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
@@ -114,7 +113,6 @@ else:
 
 st.markdown("---")
 
-# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -126,7 +124,6 @@ currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 base_premium_monthly = base_premium_annual / 12.0
 
-# --- ОСНОВНОЙ КОНТЕНТ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -137,7 +134,6 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
-        # ВОЗВРАЩЕНО: Переключатель режимов. По умолчанию выключен (работает Автоматический AI-режим)
         manual_mode = st.checkbox("🎯 Enable manual target correction", value=False)
         final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
         r_val, g_val, b_val = 128, 128, 128
@@ -155,7 +151,7 @@ if uploaded_file is not None:
                 results = model(img, verbose=False)
                 
                 car_mask = np.zeros((h, w), dtype=np.uint8)
-                VALID_VEHICLE_CLASSES = [2, 5, 7] # Легковая, автобус, грузовик
+                VALID_VEHICLE_CLASSES = [2, 5, 7]
                 
                 for result in results:
                     if result.masks is not None:
@@ -169,8 +165,11 @@ if uploaded_file is not None:
                     clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
                     final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
                     
-                    # Надежный замер усредненного цвета кузова
-                    mean_bgr = cv2.mean(img, mask=final_calculated_mask)
+                    # Безопасная конвертация маски для OpenCV
+                    mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
+                    mean_bgr = cv2.mean(img, mask=mask_uint8)
+                    
+                    # ИСПРАВЛЕНО: Каналы разложены строго по своим B-G-R индексам!
                     b_val = int(mean_bgr[0])
                     g_val = int(mean_bgr[1])
                     r_val = int(mean_bgr[2])
@@ -224,3 +223,4 @@ if uploaded_file is not None:
         
         st.markdown("---")
         m1, m2 = st.columns(2)
+        m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
