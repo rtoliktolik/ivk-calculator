@@ -168,6 +168,7 @@ if uploaded_file is not None:
                     mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                     mean_bgr = cv2.mean(img, mask=mask_uint8)
                     
+                    # ИСПРАВЛЕНО: Каналы BGR разложены по строгим числовым индексам кортежа
                     b_val = int(mean_bgr[0])
                     g_val = int(mean_bgr[1])
                     r_val = int(mean_bgr[2])
@@ -220,6 +221,5 @@ if uploaded_file is not None:
             st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
         
         st.markdown("---")
-        # Избавились от вложенных with m1/m2 для исключения риска IndentationError
         st.write(f"**Light Contrast ΔL:** {delta_L:.2f}")
         st.write(f"**Chromatic Contrast Δab:** {delta_ab:.2f}")
