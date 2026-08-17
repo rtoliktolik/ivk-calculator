@@ -100,14 +100,14 @@ st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 2.0rem !important; font-weight: bold !important; }
-    [data-testid="stMetricLabel"] { font-size: 1.0rem !important; }
+    [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: bold !important; }
+    [data-testid="stMetricLabel"] { font-size: 0.9rem !important; }
     </style>
 """, unsafe_allow_html=True)
 
 logo_path = "logo.png"
 if os.path.exists(logo_path):
-    st.image(logo_path, width=300)
+    st.image(logo_path, width=260)
 else:
     st.title("FARRATE-X | ANALYTICAL IVK CALCULATOR")
 
@@ -131,102 +131,99 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
-    manual_mode = st.checkbox("🎯 Enable manual target correction", value=False)
-    final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
-    r_val, g_val, b_val = 128, 128, 128
+    col_left_img, col_right_data = st.columns(2)
     
-    if manual_mode:
-        st.markdown("**Crosshair coordinates:**")
-        cx = st.slider("Horizontal (X)", 0, w, int(w * 0.34), step=2)
-        cy = st.slider("Vertical (Y)", 0, h, int(h * 0.48), step=2)
-        final_calculated_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
-        b_raw, g_raw, r_raw = img[cy, cx]
-        r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
-    else:
-        with st.spinner("AI is isolating clean paintwork..."):
-            model = YOLO("yolov8n-seg.pt")
-            results = model(img, verbose=False)
-            
-            car_mask = np.zeros((h, w), dtype=np.uint8)
-            VALID_VEHICLE_CLASSES = [2, 5, 7]
-            
-            for result in results:
-                if result.masks is not None:
-                    for mask, cls in zip(result.masks.data, result.boxes.cls):
-                        if int(cls) in VALID_VEHICLE_CLASSES:
-                            m_np = cv2.resize(mask.cpu().numpy(), (w, h))
-                            car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
-
-            if np.sum(car_mask) > 0:
-                kernel = np.ones((15, 15), np.uint8)
-                clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
-                final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
-                
-                mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
-                mean_bgr = cv2.mean(img, mask=mask_uint8)
-                
-                b_val = int(mean_bgr[0])
-                g_val = int(mean_bgr[1])
-                r_val = int(mean_bgr[2])
-            else:
-                st.error("❌ AI could not find a vehicle. Please enable manual target correction.")
-
-    visual_img = img.copy()
-    if manual_mode:
-        ch_p = create_checkerboard_pattern(w, h)
-        visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
-        cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
-    else:
-        cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
+    with col_left_img:
+        manual_mode = st.checkbox("🎯 Enable manual target correction", value=False)
+        final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
+        r_val, g_val, b_val = 128, 128, 128
         
-    st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+        if manual_mode:
+            st.markdown("**Crosshair coordinates:**")
+            cx = st.slider("Horizontal (X)", 0, w, int(w * 0.34), step=2)
+            cy = st.slider("Vertical (Y)", 0, h, int(h * 0.48), step=2)
+            final_calculated_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
+            b_raw, g_raw, r_raw = img[cy, cx]
+            r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
+        else:
+            with st.spinner("AI is isolating clean paintwork..."):
+                model = YOLO("yolov8n-seg.pt")
+                results = model(img, verbose=False)
+                
+                car_mask = np.zeros((h, w), dtype=np.uint8)
+                VALID_VEHICLE_CLASSES = [2, 5, 7]
+                
+                for result in results:
+                    if result.masks is not None:
+                        for mask, cls in zip(result.masks.data, result.boxes.cls):
+                            if int(cls) in VALID_VEHICLE_CLASSES:
+                                m_np = cv2.resize(mask.cpu().numpy(), (w, h))
+                                car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
 
-    # ВЫЧИСЛЕНИЯ ПАРАМЕТРОВ
-    p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
-    
-    delta_L = float(abs(p_L - BG_L))
-    delta_ab = float(np.linalg.norm(np.array([p_a, p_b]) - np.array([BG_A, BG_B])))
-    ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
-    predicted_crf = predict_crf_by_function(ivk_value)
-    
-    val_annual = base_premium_annual * predicted_crf
-    val_monthly = val_annual / 12.0
-    d_annual = val_annual - base_premium_annual
-    d_monthly = val_monthly - base_premium_monthly
-    
-    st.markdown("---")
-    st.subheader("📊 Express Analysis Results")
-    
-    col_ivk, col_crf = st.columns(2)
-    with col_ivk:
-        st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
-    with col_crf:
-        st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-    
-    status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
-    st.write(f"**Current Visibility Status:** {status_text}")
-    
-    st.markdown("---")
-    st.subheader("➡️ Smart Insurance Premium Adjustment")
-    st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
-    
-    col_metrics_y, col_metrics_m = st.columns(2)
-    with col_metrics_y:
-        st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
-    with col_metrics_m:
-        st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
-    
-    st.markdown("---")
-    st.write(f"**Light Contrast ΔL:** {delta_L:.2f}")
-    st.write(f"**Chromatic Contrast Δab:** {delta_ab:.2f}")
+                if np.sum(car_mask) > 0:
+                    kernel = np.ones((15, 15), np.uint8)
+                    clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
+                    final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
+                    
+                    mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
+                    mean_bgr = cv2.mean(img, mask=mask_uint8)
+                    
+                    b_val = int(mean_bgr[0])
+                    g_val = int(mean_bgr[1])
+                    r_val = int(mean_bgr[2])
+                else:
+                    st.error("❌ AI could not find a vehicle. Please enable manual target correction.")
 
-    # --- СЕКЦИЯ ПОДВАЛА НА ВСЮ ШИРИНУ ЭКРАНА ---
-    st.markdown("---")
-    st.subheader("🎨 Isolated Paintwork Color Block")
-    st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
-    
-    # Полноформатный HTML-прямоугольник живого цвета автомобиля
-    st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 75px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 10px;"></div>', unsafe_allow_html=True)
-    st.caption("Isolated Paint Shade Workspace")
-    
+        visual_img = img.copy()
+        if manual_mode:
+            ch_p = create_checkerboard_pattern(w, h)
+            visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
+            cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+        else:
+            cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
+            
+        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+
+    with col_right_data:
+        p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
+        
+        delta_L = float(abs(p_L - BG_L))
+        delta_ab = float(np.linalg.norm(np.array([p_a, p_b]) - np.array([BG_A, BG_B])))
+        ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
+        predicted_crf = predict_crf_by_function(ivk_value)
+        
+        val_annual = base_premium_annual * predicted_crf
+        val_monthly = val_annual / 12.0
+        d_annual = val_annual - base_premium_annual
+        d_monthly = val_monthly - base_premium_monthly
+        
+        st.subheader("📊 Express Analysis Results")
+        
+        col_ivk, col_crf = st.columns(2)
+        with col_ivk:
+            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
+        with col_crf:
+            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
+        
+        status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
+        st.write(f"**Current Visibility Status:** {status_text}")
+        
+        st.markdown("---")
+        st.subheader("➡️ Smart Insurance Premium Adjustment")
+        st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
+        
+        col_metrics_y, col_metrics_m = st.columns(2)
+        with col_metrics_y:
+            st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
+        with col_metrics_m:
+            st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
+        
+        st.markdown("---")
+        col_sub1, col_sub2 = st.columns(2)
+        with col_sub1:
+            st.metric("Light Contrast ΔL", f"{delta_L:.2f}")
+        with col_sub2:
+            st.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
+
+    # --- КОМПАКТНАЯ СЕКЦИЯ ПОДВАЛА НА ВСЮ ШИРИНУ ЭКРАНА ---
