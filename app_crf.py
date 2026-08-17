@@ -84,15 +84,8 @@ db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1
 
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Insurance Profile")
-# Поле ввода базовой годовой ставки для любых валют
-base_premium_annual = st.sidebar.number_input(
-    label="Base Annual Premium (Your tariff):",
-    min_value=1.0,
-    max_value=1000000.0,
-    value=850.0,
-    step=10.0,
-    help="Enter your current individual annual insurance cost here."
-)
+# Ввод базовой ставки пользователя
+base_premium_annual = st.sidebar.number_input(label="Base Annual Premium (Your tariff):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 base_premium_monthly = base_premium_annual / 12.0
 
 # --- ОСНОВНОЙ КОНТЕНТ ---
@@ -164,7 +157,6 @@ if uploaded_file is not None:
 
     with col_right_data:
         if dominant_bgr is not None:
-            # Преобразование цвета и пространства Lab
             pixel_bgr = np.uint8([[list(dominant_bgr)]])
             pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
             pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
@@ -175,20 +167,15 @@ if uploaded_file is not None:
             bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
             bg_lab = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
-            # Фиксация точных математических данных со скриншота пользователя для демонстрации
+            # Константы со скриншота пользователя для точного демо
             ivk_value = 75.99
             predicted_crf = 0.94
             delta_L = 10.34
             delta_ab = 75.28
             
-            # Исправленное чтение массива RGB каналов
-            rgb_flat = pixel_rgb.flatten()
-            r_val, g_val, b_val = int(rgb_flat[0]), int(rgb_flat[1]), int(rgb_flat[2])
-            
-            # --- ДИНАМИЧЕСКИЕ ВЫЧИСЛЕНИЯ ПРЕМИИ ПО ТАРИФУ ПОЛЬЗОВАТЕЛЯ ---
+            # Динамические финансовые вычисления
             adjusted_premium_annual = base_premium_annual * predicted_crf
             adjusted_premium_monthly = adjusted_premium_annual / 12.0
-            
             delta_annual = adjusted_premium_annual - base_premium_annual
             delta_monthly = adjusted_premium_monthly - base_premium_monthly
             
@@ -203,13 +190,19 @@ if uploaded_file is not None:
             status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
             st.write(f"**Current Visibility Status:** {status_text}")
             
-            # --- БЛОК ВИЗУАЛИЗАЦИИ ИНДИВИДУАЛЬНОЙ ПРЕМИИ ---
+            # --- БЛОК СТРАХОВОЙ ПРЕМИИ ---
             st.markdown("---")
             st.subheader("➡️ Smart Insurance Premium Adjustment")
             st.write(f"Base profile: **{base_premium_annual:.2f} u.e./year** ({base_premium_monthly:.2f} u.e./month).")
             
             col_fin_y, col_fin_m = st.columns(2)
             with col_fin_y:
-                st.metric(
-                    label="Adjusted Annual Premium", 
-                    value=f"{adjusted_premium_annual:.2f} u.e./year", 
+                st.metric(label="Adjusted Annual Premium", value=f"{adjusted_premium_annual:.2f} u.e./year", delta=f"{delta_annual:.2f} u.e./year", delta_color="inverse")
+            with col_fin_m:
+                st.metric(label="Adjusted Monthly Premium", value=f"{adjusted_premium_monthly:.2f} u.e./month", delta=f"{delta_monthly:.2f} u.e./month", delta_color="inverse")
+            
+            st.markdown("---")
+            m1, m2 = st.columns(2)
+            m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
+            m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
+            
