@@ -5,19 +5,56 @@ from ultralytics import YOLO
 import os
 import plotly.graph_objects as go
 
-# Fixed reference road background constant (Asphalt)
-CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
+# Справочный фон дороги — асфальт в пространстве CIELAB
+# Константы для CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
+BG_L = 44.40
+BG_A = 0.00
+BG_B = 0.00
 
-# Точки для интерполяции (наша кривая риска)
+# Точки для интерполяции (кривая риска аварийности)
 XP_POINTS = [12.5, 33.5, 47.0, 58.5, 80.0]
 FP_POINTS = [1.19, 1.03, 1.00, 0.975, 0.93]
 
-# ---------------------------------------------------------------------------
-# Mathematical function for predicting risk (CRF) by IVK values
-# ---------------------------------------------------------------------------
 def predict_crf_by_function(target_ivk: float) -> float:
     predicted_crf = float(np.interp(target_ivk, XP_POINTS, FP_POINTS))
     return float(np.round(predicted_crf, 2))
+
+def rgb_to_lab(r, g, b):
+    # Математически точный конвертер RGB -> CIELAB без использования cv2.cvtColor
+    var_R = (r / 255.0)
+    var_G = (g / 255.0)
+    var_B = (b / 255.0)
+
+    if var_R > 0.04045: var_R = ((var_R + 0.055) / 1.055) ** 2.4
+    else: var_R = var_R / 12.92
+    if var_G > 0.04045: var_G = ((var_G + 0.055) / 1.055) ** 2.4
+    else: var_G = var_G / 12.92
+    if var_B > 0.04045: var_B = ((var_B + 0.055) / 1.055) ** 2.4
+    else: var_B = var_B / 12.92
+
+    var_R = var_R * 100
+    var_G = var_G * 100
+    var_B = var_B * 100
+
+    X = var_R * 0.4124 + var_G * 0.3576 + var_B * 0.1805
+    Y = var_R * 0.2126 + var_G * 0.7152 + var_B * 0.0722
+    Z = var_R * 0.0193 + var_G * 0.1192 + var_B * 0.9505
+
+    X = X / 95.047
+    Y = Y / 100.000
+    Z = Z / 108.883
+
+    if X > 0.008856: X = X ** (1/3)
+    else: X = (7.787 * X) + (16 / 116)
+    if Y > 0.008856: Y = Y ** (1/3)
+    else: Y = (7.787 * Y) + (16 / 116)
+    if Z > 0.008856: Z = Z ** (1/3)
+    else: Z = (7.787 * Z) + (16 / 116)
+
+    L = (116 * Y) - 16
+    a = 500 * (X - Y)
+    sub_b = 200 * (Y - Z)
+    return L, a, sub_b
 
 def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
     COLOR_STATS_DATABASE = [
@@ -78,7 +115,6 @@ else:
 
 st.markdown("---")
 
-# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -90,7 +126,6 @@ currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 base_premium_monthly = base_premium_annual / 12.0
 
-# --- ОСНОВНОЙ КОНТЕНТ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -103,7 +138,7 @@ if uploaded_file is not None:
     with col_left_img:
         manual_mode = st.checkbox("🎯 Enable manual target correction", value=False)
         final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
-        dominant_bgr = None
+        r_val, g_val, b_val = 128, 128, 128
         
         if manual_mode:
             st.markdown("**Crosshair coordinates:**")
@@ -112,7 +147,8 @@ if uploaded_file is not None:
             x1, y1 = max(0, cx - 10), max(0, cy - 10)
             x2, y2 = min(w, cx + 10), min(h, cy + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
-            dominant_bgr = [int(c) for c in img[cy, cx]]
+            b_raw, g_raw, r_raw = img[cy, cx]
+            r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
         else:
             with st.spinner("AI is isolating clean paintwork..."):
                 model = YOLO("yolov8n-seg.pt")
@@ -124,83 +160,65 @@ if uploaded_file is not None:
                 for result in results:
                     if result.masks is not None:
                         for mask, cls in zip(result.masks.data, result.boxes.cls):
-                            class_idx = int(cls)
-                            if class_idx in VALID_VEHICLE_CLASSES:
+                            if int(cls) in VALID_VEHICLE_CLASSES:
                                 m_np = cv2.resize(mask.cpu().numpy(), (w, h))
-                                m_bin = (m_np > 0.5).astype(np.uint8)
-                                car_mask = cv2.bitwise_or(car_mask, m_bin)
+                                car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
 
                 if np.sum(car_mask) > 0:
                     kernel = np.ones((15, 15), np.uint8)
                     clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
                     
-                    car_pixels_bgr = img[clean_paint_mask == 1]
-                    if len(car_pixels_bgr) > 0:
-                        final_calculated_mask[clean_paint_mask == 1] = 1
-                        mean_bgr = np.mean(car_pixels_bgr, axis=0)
-                        # ИСПРАВЛЕНО: Прямое разложение усредненных каналов BGR
-                        dominant_bgr = [int(mean_bgr[0]), int(mean_bgr[1]), int(mean_bgr[2])]
-                    else:
-                        final_calculated_mask[car_mask == 1] = 1
-                        mean_bgr = np.mean(img[car_mask == 1], axis=0)
-                        dominant_bgr = [int(mean_bgr[0]), int(mean_bgr[1]), int(mean_bgr[2])]
+                    car_pixels = img[clean_paint_mask == 1] if np.sum(clean_paint_mask) > 0 else img[car_mask == 1]
+                    final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
+                    
+                    mean_color = np.mean(car_pixels, axis=0)
+                    r_val, g_val, b_val = int(mean_color[2]), int(mean_color[1]), int(mean_color[0])
                 else:
                     st.error("❌ AI could not find a vehicle. Please enable manual target correction.")
 
-        if dominant_bgr is not None:
-            visual_img = img.copy()
+        visual_img = img.copy()
+        if manual_mode:
+            ch_p = create_checkerboard_pattern(w, h)
+            visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
+            cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+        else:
+            cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
             
-            if manual_mode:
-                ch_p = create_checkerboard_pattern(w, h)
-                visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
-                cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
-            else:
-                cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
-                
-            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
     with col_right_data:
-        if dominant_bgr is not None:
-            # Безопасное чтение каналов BGR
-            b_val = dominant_bgr[0]
-            g_val = dominant_bgr[1]
-            r_val = dominant_bgr[2]
-            
-            # Цветовой анализ в пространстве CIELAB
-            pixel_bgr_img = np.uint8([[[b_val, g_val, r_val]]])
-            pixel_rgb_img = cv2.cvtColor(pixel_bgr_img, cv2.COLOR_BGR2RGB)
-            pixel_rgb_f32 = pixel_rgb_img.astype(np.float32) / 255.0
-            pixel_lab = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
-            
-            bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
-            bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
-            bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
-            bg_lab = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
-            
-            delta_L = float(abs(float(pixel_lab) - float(bg_lab)))
-            delta_ab = float(np.linalg.norm(pixel_lab[1:] - bg_lab[1:]))
-            ivk_value = float(np.linalg.norm(pixel_lab - bg_lab))
-            predicted_crf = predict_crf_by_function(ivk_value)
-            
-            # Финансовые вычисления
-            val_annual = base_premium_annual * predicted_crf
-            val_monthly = val_annual / 12.0
-            d_annual = val_annual - base_premium_annual
-            d_monthly = val_monthly - base_premium_monthly
-            
-            st.subheader("📊 Express Analysis Results")
-            
-            col_ivk, col_crf = st.columns(2)
-            with col_ivk:
-                st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
-            with col_crf:
-                st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-            
-            status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
-            st.write(f"**Current Visibility Status:** {status_text}")
-            
-            # --- БЛОК СТРАХОВОЙ ПРЕМИИ ---
-            st.markdown("---")
-            st.subheader("➡️ Smart Insurance Premium Adjustment")
-            st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
+        # Прямой перевод цвета замера в LAB по чистым формулам
+        p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
+        
+        delta_L = float(abs(p_L - BG_L))
+        delta_ab = float(np.linalg.norm(np.array([p_a, p_b]) - np.array([BG_A, BG_B])))
+        ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
+        predicted_crf = predict_crf_by_function(ivk_value)
+        
+        val_annual = base_premium_annual * predicted_crf
+        val_monthly = val_annual / 12.0
+        d_annual = val_annual - base_premium_annual
+        d_monthly = val_monthly - base_premium_monthly
+        
+        st.subheader("📊 Express Analysis Results")
+        
+        col_ivk, col_crf = st.columns(2)
+        with col_ivk:
+            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
+        with col_crf:
+            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
+        
+        status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
+        st.write(f"**Current Visibility Status:** {status_text}")
+        
+        st.markdown("---")
+        st.subheader("➡️ Smart Insurance Premium Adjustment")
+        st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
+        
+        st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
+        st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
+        
+        st.markdown("---")
+        m1, m2 = st.columns(2)
+        m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
