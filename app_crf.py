@@ -165,11 +165,10 @@ if uploaded_file is not None:
                     clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
                     final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
                     
-                    # Безопасная конвертация маски для OpenCV
                     mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                     mean_bgr = cv2.mean(img, mask=mask_uint8)
                     
-                    # ИСПРАВЛЕНО: Каналы разложены строго по своим B-G-R индексам!
+                    # ИСПРАВЛЕНО: Теперь индексы, [1], [2] прописаны корректно!
                     b_val = int(mean_bgr[0])
                     g_val = int(mean_bgr[1])
                     r_val = int(mean_bgr[2])
@@ -224,3 +223,4 @@ if uploaded_file is not None:
         st.markdown("---")
         m1, m2 = st.columns(2)
         m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
+        m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
