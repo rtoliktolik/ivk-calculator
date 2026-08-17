@@ -20,7 +20,7 @@ def predict_crf_by_function(target_ivk: float) -> float:
     return float(np.round(predicted_crf, 2))
 
 def rgb_to_lab(r, g, b):
-    # Математически точный конвертер RGB -> CIELAB без использования cv2.cvtColor
+    # Математически точный конвертер RGB -> CIELAB
     var_R = (r / 255.0)
     var_G = (g / 255.0)
     var_B = (b / 255.0)
@@ -170,14 +170,12 @@ if uploaded_file is not None:
                     kernel = np.ones((15, 15), np.uint8)
                     clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
                     
-                    car_pixels = img[clean_paint_mask == 1] if np.sum(clean_paint_mask) > 0 else img[car_mask == 1]
                     final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
-                    
-                    mean_color = np.mean(car_pixels, axis=0)
-                    # ИСПРАВЛЕНО: Раскладываем каналы строго по правильным индексам BGR массива OpenCV
-                    b_val = int(mean_color[0])
-                    g_val = int(mean_color[1])
-                    r_val = int(mean_color[2])
+                    # СЧИТЫВАЕМ ЦВЕТ: Абсолютно надёжный метод cv2.mean с маской
+                    mean_bgr = cv2.mean(img, mask=final_calculated_mask)
+                    b_val = int(mean_bgr[0])
+                    g_val = int(mean_bgr[1])
+                    r_val = int(mean_bgr[2])
                 else:
                     st.error("❌ AI could not find a vehicle. Please enable manual target correction.")
 
@@ -193,7 +191,7 @@ if uploaded_file is not None:
         st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
     with col_right_data:
-        # Прямой перевод цвета замера в LAB по чистым формулам
+        # Прямой перевод цвета замера в LAB
         p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
         
         delta_L = float(abs(p_L - BG_L))
@@ -221,4 +219,9 @@ if uploaded_file is not None:
         st.subheader("➡️ Smart Insurance Premium Adjustment")
         st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
         
+        # ВОЗВРАЩЕНО: Годовая премия
         st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
+        # ВОЗВРАЩЕНО: Помесячная демонстрация рисков
+        st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
+        
+        st.markdown("---")
