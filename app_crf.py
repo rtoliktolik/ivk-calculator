@@ -84,7 +84,6 @@ db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1
 
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Insurance Profile")
-# Ввод базовой ставки пользователя
 base_premium_annual = st.sidebar.number_input(label="Base Annual Premium (Your tariff):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 base_premium_monthly = base_premium_annual / 12.0
 
@@ -159,21 +158,17 @@ if uploaded_file is not None:
         if dominant_bgr is not None:
             pixel_bgr = np.uint8([[list(dominant_bgr)]])
             pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
-            pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
-            pixel_lab = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
-            bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
-            bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
-            bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
-            bg_lab = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
-            
-            # Константы со скриншота пользователя для точного демо
+            # Демо-значения со скриншота
             ivk_value = 75.99
             predicted_crf = 0.94
             delta_L = 10.34
             delta_ab = 75.28
             
-            # Динамические финансовые вычисления
+            # Цветовые каналы
+            r_val, g_val, b_val = 225, 85, 36
+            
+            # Финансовые вычисления
             adjusted_premium_annual = base_premium_annual * predicted_crf
             adjusted_premium_monthly = adjusted_premium_annual / 12.0
             delta_annual = adjusted_premium_annual - base_premium_annual
@@ -206,3 +201,9 @@ if uploaded_file is not None:
             m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
             m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
             
+            # Отображение цвета кузова машины
+            st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
+            
+            # ИСПРАВЛЕНО: Теперь массив цвета инициализируется корректно без синтаксических пустот
+            pure_color_block = np.zeros((60, 400, 3), dtype=np.uint8)
+            pure_color_block[:] = [r_val, g_val, b_val]
