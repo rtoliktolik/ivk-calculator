@@ -122,7 +122,7 @@ st.sidebar.header("💰 Insurance Profile")
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# Базовый контейнер в боковой панели, который заполнится результатами расчетов ниже
+# Пустой контейнер в боковой панели, который заполнится финансовыми результатами ниже
 sidebar_calc_space = st.sidebar.empty()
 
 # --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
@@ -133,7 +133,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
-    # ➡️ ВЫЧИСЛЕНИЕ МАСКИ И ЦВЕТА КУЗОВА
+    # ➡️ ПРЕДВАРИТЕЛЬНЫЙ РАСЧЕТ ЦВЕТА КУЗОВА ДЛЯ ВЕРХНЕГО ПРЯМОУГОЛЬНИКА
     temp_mask = np.zeros((h, w), dtype=np.uint8)
     r_val, g_val, b_val = 128, 128, 128
     
@@ -186,12 +186,10 @@ if uploaded_file is not None:
     d_annual = float(val_annual - base_premium_annual)
     d_monthly = float(val_monthly - base_premium_monthly)
 
-    # ➡️ ОТРИСОВКА В БОКОВОЙ ПАНЕЛИ (ПО ТВОЕЙ ИДЕЕ)
+    # ➡️ ТВОЯ ГЕНИАЛЬНАЯ ИДЕЯ: ОТРИСОВКА ФИНАНСОВ В БОКОВОЙ ПАНЕЛИ
     with sidebar_calc_space.container():
         st.write("**🧮 Live Premium Calculation**")
         st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr ({base_premium_monthly:.2f} {currency_symbol}/mo)")
-        
-        # Красивые метрики в левой панели с дельтами изменений тарифа
         st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
         st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
 
@@ -199,6 +197,7 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
+        # Прямоугольник зафиксированного цвета СВЕРХУ левой колонки
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
         
@@ -223,5 +222,3 @@ if uploaded_file is not None:
         else:
             if np.sum(final_calculated_mask) > 0:
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
-            else:
