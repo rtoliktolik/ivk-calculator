@@ -157,8 +157,6 @@ if uploaded_file is not None:
         model = load_yolo_model()
         results = model(img, verbose=False)
         car_mask = np.zeros((h, w), dtype=np.uint8)
-        
-        # СТРОГО ЗАПОЛНЕНО: Классы транспорта прописаны жестким массивом питона
         VALID_VEHICLE_CLASSES = [2, 5, 7]
         
         for result in results:
@@ -205,6 +203,7 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
+        # Прямоугольник зафиксированного цвета СВЕРХУ левой колонки
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
         
