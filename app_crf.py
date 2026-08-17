@@ -121,7 +121,7 @@ db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Insurance Profile")
 
-currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["⚙", "$", "£", "¥", "u.e."])
+currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 base_premium_monthly = base_premium_annual / 12.0
@@ -171,7 +171,6 @@ if uploaded_file is not None:
                     
                     final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
                     mean_bgr = cv2.mean(img, mask=final_calculated_mask)
-                    # ИСПРАВЛЕНО: Явне витягування каналів за індексами масиву
                     b_val = int(mean_bgr[0])
                     g_val = int(mean_bgr[1])
                     r_val = int(mean_bgr[2])
@@ -217,11 +216,13 @@ if uploaded_file is not None:
         st.subheader("➡️ Smart Insurance Premium Adjustment")
         st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
         
-        st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
-        st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
+        col_metrics_y, col_metrics_m = st.columns(2)
+        with col_metrics_y:
+            st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
+        with col_metrics_m:
+            st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
         
         st.markdown("---")
         m1, m2 = st.columns(2)
         m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
         m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
-        
