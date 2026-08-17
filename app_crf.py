@@ -112,7 +112,7 @@ if uploaded_file is not None:
             x1, y1 = max(0, cx - 10), max(0, cy - 10)
             x2, y2 = min(w, cx + 10), min(h, cy + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
-            dominant_bgr = img[cy, cx]
+            dominant_bgr = [int(x) for x in img[cy, cx]]
         else:
             with st.spinner("AI is isolating clean paintwork..."):
                 model = YOLO("yolov8n-seg.pt")
@@ -137,10 +137,12 @@ if uploaded_file is not None:
                     car_pixels_bgr = img[clean_paint_mask == 1]
                     if len(car_pixels_bgr) > 0:
                         final_calculated_mask[clean_paint_mask == 1] = 1
-                        dominant_bgr = np.mean(car_pixels_bgr, axis=0) # Взяли среднее значение
+                        median_vals = np.mean(car_pixels_bgr, axis=0)
+                        dominant_bgr = [int(median_vals[0]), int(median_vals[1]), int(median_vals[2])]
                     else:
                         final_calculated_mask[car_mask == 1] = 1
-                        dominant_bgr = np.mean(img[car_mask == 1], axis=0)
+                        median_vals = np.mean(img[car_mask == 1], axis=0)
+                        dominant_bgr = [int(median_vals[0]), int(median_vals[1]), int(median_vals[2])]
                 else:
                     st.error("❌ AI could not find a vehicle. Please enable manual target correction.")
 
@@ -159,10 +161,15 @@ if uploaded_file is not None:
 
     with col_right_data:
         if dominant_bgr is not None:
-            # Исправленное и безопасное преобразование цвета в Lab
-            pixel_bgr = np.uint8([[ [int(dominant_bgr[0]), int(dominant_bgr[1]), int(dominant_bgr[2])] ]])
-            pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
-            pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
+            # Безопасное извлечение каналов B, G, R напрямую
+            b_val = dominant_bgr[0]
+            g_val = dominant_bgr[1]
+            r_val = dominant_bgr[2]
+            
+            # Цветовой анализ в пространстве CIELAB
+            pixel_bgr_img = np.uint8([[[b_val, g_val, r_val]]])
+            pixel_rgb_img = cv2.cvtColor(pixel_bgr_img, cv2.COLOR_BGR2RGB)
+            pixel_rgb_f32 = pixel_rgb_img.astype(np.float32) / 255.0
             pixel_lab = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
             bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
@@ -175,11 +182,7 @@ if uploaded_file is not None:
             ivk_value = float(np.linalg.norm(pixel_lab - bg_lab))
             predicted_crf = predict_crf_by_function(ivk_value)
             
-            # Чтение точных каналов цвета кузова автомобиля
-            rgb_single = pixel_rgb[0, 0]
-            r_val, g_val, b_val = int(rgb_single[0]), int(rgb_single[1]), int(rgb_single[2])
-            
-            # Финансовый блок премии
+            # Финансовые вычисления
             val_annual = base_premium_annual * predicted_crf
             val_monthly = val_annual / 12.0
             d_annual = val_annual - base_premium_annual
@@ -200,5 +203,3 @@ if uploaded_file is not None:
             st.markdown("---")
             st.subheader("➡️ Smart Insurance Premium Adjustment")
             st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
-            
-            st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
