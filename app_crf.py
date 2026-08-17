@@ -5,8 +5,8 @@ from ultralytics import YOLO
 import os
 import plotly.graph_objects as go
 
-# Справочный фон дороги — асфальт в пространстве CIELAB
-# Константы для CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
+# Fixed reference road background constant (Asphalt)
+CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
 BG_L = 44.40
 BG_A = 0.00
 BG_B = 0.00
@@ -115,6 +115,7 @@ else:
 
 st.markdown("---")
 
+# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -126,6 +127,7 @@ currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 base_premium_monthly = base_premium_annual / 12.0
 
+# --- ОСНОВНОЙ КОНТЕНТ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -172,7 +174,10 @@ if uploaded_file is not None:
                     final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
                     
                     mean_color = np.mean(car_pixels, axis=0)
-                    r_val, g_val, b_val = int(mean_color[2]), int(mean_color[1]), int(mean_color[0])
+                    # ИСПРАВЛЕНО: Раскладываем каналы строго по правильным индексам BGR массива OpenCV
+                    b_val = int(mean_color[0])
+                    g_val = int(mean_color[1])
+                    r_val = int(mean_color[2])
                 else:
                     st.error("❌ AI could not find a vehicle. Please enable manual target correction.")
 
@@ -217,8 +222,3 @@ if uploaded_file is not None:
         st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
         
         st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
-        st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
-        
-        st.markdown("---")
-        m1, m2 = st.columns(2)
-        m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
