@@ -138,6 +138,7 @@ if uploaded_file is not None:
                     if len(car_pixels_bgr) > 0:
                         final_calculated_mask[clean_paint_mask == 1] = 1
                         median_vals = np.mean(car_pixels_bgr, axis=0)
+                        # ИСПРАВЛЕНО: Безопасное извлечение по индексам каналов
                         dominant_bgr = [int(median_vals[0]), int(median_vals[1]), int(median_vals[2])]
                     else:
                         final_calculated_mask[car_mask == 1] = 1
@@ -161,7 +162,6 @@ if uploaded_file is not None:
 
     with col_right_data:
         if dominant_bgr is not None:
-            # Безопасное извлечение каналов B, G, R напрямую
             b_val = dominant_bgr[0]
             g_val = dominant_bgr[1]
             r_val = dominant_bgr[2]
@@ -203,3 +203,4 @@ if uploaded_file is not None:
             st.markdown("---")
             st.subheader("➡️ Smart Insurance Premium Adjustment")
             st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
+            
