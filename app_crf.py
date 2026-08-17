@@ -18,6 +18,11 @@ def predict_crf_by_function(target_ivk: float) -> float:
     predicted_crf = float(np.interp(target_ivk, XP_POINTS, FP_POINTS))
     return float(np.round(predicted_crf, 2))
 
+# ТРЮК ОПТИМИЗАЦИИ: Кэшируем модель YOLO, чтобы она загружалась в память облака мгновенно!
+@st.cache_resource
+def load_yolo_model():
+    return YOLO("yolov8n-seg.pt")
+
 def rgb_to_lab(r, g, b):
     var_R = (r / 255.0)
     var_G = (g / 255.0)
@@ -122,7 +127,7 @@ st.sidebar.header("💰 Insurance Profile")
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# Пустой контейнер в боковой панели, который заполнится финансовыми результатами ниже
+# Пустой контейнер в боковой панели для мгновенного вывода расчетов
 sidebar_calc_space = st.sidebar.empty()
 
 # --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
@@ -133,7 +138,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
-    # ➡️ ПРЕДВАРИТЕЛЬНЫЙ РАСЧЕТ ЦВЕТА КУЗОВА ДЛЯ ВЕРХНЕГО ПРЯМОУГОЛЬНИКА
+    # ➡️ ВЫЧИСЛЕНИЕ МАСКИ И ЦВЕТА КУЗОВА
     temp_mask = np.zeros((h, w), dtype=np.uint8)
     r_val, g_val, b_val = 128, 128, 128
     
@@ -148,10 +153,11 @@ if uploaded_file is not None:
         r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
         temp_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
     else:
-        model = YOLO("yolov8n-seg.pt")
+        # Используем оптимизированную кэшированную модель
+        model = load_yolo_model()
         results = model(img, verbose=False)
         car_mask = np.zeros((h, w), dtype=np.uint8)
-        VALID_VEHICLE_CLASSES = [2, 5, 7]
+        VALID_VEHICLE_CLASSES =
         
         for result in results:
             if result.masks is not None:
@@ -167,9 +173,9 @@ if uploaded_file is not None:
             
             mask_uint8 = cv2.convertScaleAbs(temp_mask)
             mean_bgr = cv2.mean(img, mask=mask_uint8)
-            b_val = int(mean_bgr[0])
-            g_val = int(mean_bgr[1])
-            r_val = int(mean_bgr[2])
+            b_val = int(mean_bgr)
+            g_val = int(mean_bgr)
+            r_val = int(mean_bgr)
         else:
             r_val, g_val, b_val = 128, 128, 128
 
@@ -186,7 +192,7 @@ if uploaded_file is not None:
     d_annual = float(val_annual - base_premium_annual)
     d_monthly = float(val_monthly - base_premium_monthly)
 
-    # ➡️ ТВОЯ ГЕНИАЛЬНАЯ ИДЕЯ: ОТРИСОВКА ФИНАНСОВ В БОКОВОЙ ПАНЕЛИ
+    # ➡️ ОТРИСОВКА В БОКОВОЙ ПАНЕЛИ
     with sidebar_calc_space.container():
         st.write("**🧮 Live Premium Calculation**")
         st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr ({base_premium_monthly:.2f} {currency_symbol}/mo)")
@@ -197,7 +203,6 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
-        # Прямоугольник зафиксированного цвета СВЕРХУ левой колонки
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
         
