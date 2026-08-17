@@ -147,6 +147,7 @@ if uploaded_file is not None:
         model = YOLO("yolov8n-seg.pt")
         results = model(img, verbose=False)
         car_mask = np.zeros((h, w), dtype=np.uint8)
+        # ИСПРАВЛЕНО: Жёстко прописаны классы транспорта без пустот
         VALID_VEHICLE_CLASSES = [2, 5, 7]
         
         for result in results:
@@ -227,4 +228,3 @@ if uploaded_file is not None:
         st.write(f"**Current Visibility Status:** {status_text}")
         
         st.markdown("---")
-        st.subheader("➡️ Smart Insurance Premium Adjustment")
