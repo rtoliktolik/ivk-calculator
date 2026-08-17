@@ -1,6 +1,7 @@
 import streamlit as st
 import cv2
 import numpy as np
+from ultralytics import YOLO
 import os
 import plotly.graph_objects as go
 
@@ -18,7 +19,7 @@ def predict_crf_by_function(target_ivk: float) -> float:
     return float(np.round(predicted_crf, 2))
 
 def rgb_to_lab(r, g, b):
-    # Математически точный конвертер RGB -> CIELAB для живого анализа цвета
+    # Математически точный конвертер RGB -> CIELAB
     var_R = (r / 255.0)
     var_G = (g / 255.0)
     var_B = (b / 255.0)
@@ -94,7 +95,7 @@ def create_checkerboard_pattern(width, height, square_size=15):
     return np.tile(base, (int(np.ceil(height / (square_size * 2))), int(np.ceil(width / (square_size * 2))), 1))[0:height, 0:width]
 
 # ---------------------------------------------------------------------------
-# Web Interface Configuration
+# Web Interface
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
@@ -125,7 +126,7 @@ currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 base_premium_monthly = base_premium_annual / 12.0
 
-# --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
+# --- ОСНОВНОЙ КОНТЕНТ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -136,38 +137,65 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
-        st.markdown("**🎯 Position Crosshair over target paintwork:**")
-        cx = st.slider("Horizontal (X)", 0, w, int(w * 0.34), step=2)
-        cy = st.slider("Vertical (Y)", 0, h, int(h * 0.48), step=2)
-        
-        # Чтение реального живого пикселя из картинки в формате BGR
-        b_raw, g_raw, r_raw = img[cy, cx]
-        r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
-        
-        # Эмуляция маски зоны сканирования для визуала
+        # ВОЗВРАЩЕНО: Переключатель режимов. По умолчанию выключен (работает Автоматический AI-режим)
+        manual_mode = st.checkbox("🎯 Enable manual target correction", value=False)
         final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
-        x1, y1 = max(0, cx - 12), max(0, cy - 12)
-        x2, y2 = min(w, cx + 12), min(h, cy + 12)
-        final_calculated_mask[y1:y2, x1:x2] = 1
+        r_val, g_val, b_val = 128, 128, 128
         
+        if manual_mode:
+            st.markdown("**Crosshair coordinates:**")
+            cx = st.slider("Horizontal (X)", 0, w, int(w * 0.34), step=2)
+            cy = st.slider("Vertical (Y)", 0, h, int(h * 0.48), step=2)
+            final_calculated_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
+            b_raw, g_raw, r_raw = img[cy, cx]
+            r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
+        else:
+            with st.spinner("AI is isolating clean paintwork..."):
+                model = YOLO("yolov8n-seg.pt")
+                results = model(img, verbose=False)
+                
+                car_mask = np.zeros((h, w), dtype=np.uint8)
+                VALID_VEHICLE_CLASSES = [2, 5, 7] # Легковая, автобус, грузовик
+                
+                for result in results:
+                    if result.masks is not None:
+                        for mask, cls in zip(result.masks.data, result.boxes.cls):
+                            if int(cls) in VALID_VEHICLE_CLASSES:
+                                m_np = cv2.resize(mask.cpu().numpy(), (w, h))
+                                car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
+
+                if np.sum(car_mask) > 0:
+                    kernel = np.ones((15, 15), np.uint8)
+                    clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
+                    final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
+                    
+                    # Надежный замер усредненного цвета кузова
+                    mean_bgr = cv2.mean(img, mask=final_calculated_mask)
+                    b_val = int(mean_bgr[0])
+                    g_val = int(mean_bgr[1])
+                    r_val = int(mean_bgr[2])
+                else:
+                    st.error("❌ AI could not find a vehicle. Please enable manual target correction.")
+
         visual_img = img.copy()
-        ch_p = create_checkerboard_pattern(w, h)
-        visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
-        cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
-        
+        if manual_mode:
+            ch_p = create_checkerboard_pattern(w, h)
+            visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
+            cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+        else:
+            cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
+            
         st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
     with col_right_data:
-        # НАСТОЯЩИЙ перевод живого замерянного пикселя в LAB пространство
         p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
         
-        # Честные формулы вычисления индексов
         delta_L = float(abs(p_L - BG_L))
         delta_ab = float(np.linalg.norm(np.array([p_a, p_b]) - np.array([BG_A, BG_B])))
         ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
         predicted_crf = predict_crf_by_function(ivk_value)
         
-        # Живой пересчет финансовой премии под тариф пользователя
         val_annual = base_premium_annual * predicted_crf
         val_monthly = val_annual / 12.0
         d_annual = val_annual - base_premium_annual
@@ -184,7 +212,6 @@ if uploaded_file is not None:
         status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
         st.write(f"**Current Visibility Status:** {status_text}")
         
-        # --- БЛОК СТРАХОВОЙ ПРЕМИИ ---
         st.markdown("---")
         st.subheader("➡️ Smart Insurance Premium Adjustment")
         st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
@@ -197,30 +224,3 @@ if uploaded_file is not None:
         
         st.markdown("---")
         m1, m2 = st.columns(2)
-        m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
-        m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
-
-    # --- СЕКЦИЯ ПОДВАЛА НА ВСЮ ШИРИНУ ---
-    st.markdown("---")
-    st.write("### 🎨 Isolated Paintwork Color Block")
-    st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
-    
-    # HTML-отрисовка прямоугольника живого цвета
-    st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 75px; border-radius: 6px; border: 1px solid #bbb; margin-bottom: 12px;"></div>', unsafe_allow_html=True)
-    st.caption("Isolated Paint Shade Workspace")
-    
-    st.markdown("---")
-    st.write("### 🔮 Predictive Evaluation by Databases")
-    db_res = simulate_database_lookup(ivk_value, db_tolerance)
-    st.write(f"Found **{db_res['total_cars']:,}** registered vehicles in the tolerance cloud ({ivk_value:.2f} ± {db_tolerance}).")
-    st.caption(f"Related Statistical Groups: {', '.join(db_res['groups'])}")
-    
-    st.markdown("---")
-    st.write("### 📈 Continuous Accident Risk Regression Curve")
-    
-    # Исправленное построение интерактивного графика Plotly (все скобки закрыты!)
-    ivk_axis = np.linspace(10.0, 90.0, 300)
-    crf_axis = np.interp(ivk_axis, XP_POINTS, FP_POINTS)
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=ivk_axis, y=crf_axis, mode='lines', name='Regression Curve', line=dict(color='royalblue', width=3)))
