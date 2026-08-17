@@ -131,16 +131,13 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
-    # ➡️ ПРЕДВАРИТЕЛЬНЫЙ ЧЕСТНЫЙ РАСЧЕТ ЦВЕТА КУЗОВА (до отрисовки интерфейса!)
-    # Создаем временную маску для расчетов по умолчанию
+    # ➡️ ПРЕДВАРИТЕЛЬНЫЙ ЧЕСТНЫЙ РАСЧЕТ ЦВЕТА КУЗОВА
     temp_mask = np.zeros((h, w), dtype=np.uint8)
     r_val, g_val, b_val = 128, 128, 128
     
-    # Проверяем, включен ли ручной режим в текущей сессии
     is_manual = st.session_state.get("manual_checkbox", False)
     
     if is_manual:
-        # Берем координаты из ползунков сессии (или дефолтные)
         cx = st.session_state.get("slider_cx", int(w * 0.34))
         cy = st.session_state.get("slider_cy", int(h * 0.48))
         cx = min(w-1, max(0, cx))
@@ -149,7 +146,6 @@ if uploaded_file is not None:
         r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
         temp_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
     else:
-        # Автоматический AI-расчет цвета через YOLO
         model = YOLO("yolov8n-seg.pt")
         results = model(img, verbose=False)
         car_mask = np.zeros((h, w), dtype=np.uint8)
@@ -177,7 +173,7 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
-        # ВОЗВРАЩЕНО И ПЕРЕНЕСЕНО НАВЕРХ: Интерактивный прямоугольник зафиксированного цвета
+        # ТВОЯ ГЕНИАЛЬНАЯ ИДЕЯ: Интерактивный прямоугольник зафиксированного цвета теперь ВСЕГДА В САМОМ ВЕРХУ левой колонки!
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 42px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
         
@@ -190,7 +186,6 @@ if uploaded_file is not None:
             cx = st.slider("Horizontal (X)", 0, w, int(w * 0.34), step=2, key="slider_cx")
             cy = st.slider("Vertical (Y)", 0, h, int(h * 0.48), step=2, key="slider_cy")
             final_calculated_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
-            # Считываем цвет точки в реальном времени при движении слайдеров
             b_raw, g_raw, r_raw = img[cy, cx]
             r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
         else:
@@ -229,3 +224,8 @@ if uploaded_file is not None:
         
         col_ivk, col_crf = st.columns(2)
         with col_ivk:
+            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
+        with col_crf:
+            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
+        
+        status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
