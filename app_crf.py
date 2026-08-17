@@ -10,7 +10,7 @@ BG_L = 44.40
 BG_A = 0.00
 BG_B = 0.00
 
-# Регресійні точки ризику
+# Регрессионные точки риска
 XP_POINTS = [12.5, 33.5, 47.0, 58.5, 80.0]
 FP_POINTS = [1.19, 1.03, 1.00, 0.975, 0.93]
 
@@ -94,7 +94,7 @@ def create_checkerboard_pattern(width, height, square_size=15):
     return np.tile(base, (int(np.ceil(height / (square_size * 2))), int(np.ceil(width / (square_size * 2))), 1))[0:height, 0:width]
 
 # ---------------------------------------------------------------------------
-# Интерфейс
+# Web Interface
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
@@ -167,7 +167,6 @@ if uploaded_file is not None:
                     clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
                     final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
                     
-                    # Самый надежный замер цвета через чистый numpy
                     car_pixels = img[final_calculated_mask == 1]
                     mean_color = np.mean(car_pixels, axis=0)
                     b_val = int(mean_color[0])
@@ -226,5 +225,5 @@ if uploaded_file is not None:
         m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
         m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
 
-    # ПОДВАЛ НА ВСЮ ШИРИНУ ЭКРАНА
+    # --- ПРИНУДИТЕЛЬНЫЙ ВЫВОД ПОДВАЛА НА ВСЮ ШИРИНУ ЭКРАНА ---
     st.markdown("---")
