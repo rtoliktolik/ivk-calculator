@@ -101,7 +101,6 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
-        # Теперь по умолчанию AI режим включен (чекбокс выключен) для автоматического контура кузова!
         manual_mode = st.checkbox("🎯 Enable manual target correction", value=False)
         final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
         dominant_bgr = None
@@ -120,7 +119,7 @@ if uploaded_file is not None:
                 results = model(img, verbose=False)
                 
                 car_mask = np.zeros((h, w), dtype=np.uint8)
-                VALID_VEHICLE_CLASSES = [2, 5, 7] # Легковая, автобус, грузовик
+                VALID_VEHICLE_CLASSES = [2, 5, 7]
                 
                 for result in results:
                     if result.masks is not None:
@@ -132,19 +131,16 @@ if uploaded_file is not None:
                                 car_mask = cv2.bitwise_or(car_mask, m_bin)
 
                 if np.sum(car_mask) > 0:
-                    # Пытаемся безопасно сузить маску кузова
                     kernel = np.ones((15, 15), np.uint8)
                     clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
                     
-                    # Проверяем, не пустая ли получилась маска после сужения
                     car_pixels_bgr = img[clean_paint_mask == 1]
                     if len(car_pixels_bgr) > 0:
                         final_calculated_mask[clean_paint_mask == 1] = 1
-                        dominant_bgr = np.median(car_pixels_bgr, axis=0)
+                        dominant_bgr = np.mean(car_pixels_bgr, axis=0) # Взяли среднее значение
                     else:
-                        # Если сужение уничтожило маску, берем базовый контур от YOLO
                         final_calculated_mask[car_mask == 1] = 1
-                        dominant_bgr = np.median(img[car_mask == 1], axis=0)
+                        dominant_bgr = np.mean(img[car_mask == 1], axis=0)
                 else:
                     st.error("❌ AI could not find a vehicle. Please enable manual target correction.")
 
@@ -156,7 +152,6 @@ if uploaded_file is not None:
                 visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
                 cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
             else:
-                # ВОЗВРАЩЕНО: Отрисовка красивого зеленого контура вокруг распознанного кузова автомобиля
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
                 
@@ -164,8 +159,8 @@ if uploaded_file is not None:
 
     with col_right_data:
         if dominant_bgr is not None:
-            # Математический перевод РЕАЛЬНОГО пикселя в CIELAB
-            pixel_bgr = np.uint8([[list(dominant_bgr)]])
+            # Исправленное и безопасное преобразование цвета в Lab
+            pixel_bgr = np.uint8([[ [int(dominant_bgr[0]), int(dominant_bgr[1]), int(dominant_bgr[2])] ]])
             pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
             pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
             pixel_lab = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
@@ -175,17 +170,16 @@ if uploaded_file is not None:
             bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
             bg_lab = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
-            # ЧЕСТНЫЙ, живой расчет индексов видимости на основе картинки
             delta_L = float(abs(float(pixel_lab[0]) - float(bg_lab[0])))
             delta_ab = float(np.linalg.norm(pixel_lab[1:] - bg_lab[1:]))
             ivk_value = float(np.linalg.norm(pixel_lab - bg_lab))
             predicted_crf = predict_crf_by_function(ivk_value)
             
-            # Чтение РЕАЛЬНЫХ RGB каналов цвета машины
-            rgb_flat = pixel_rgb.flatten()
-            r_val, g_val, b_val = int(rgb_flat[0]), int(rgb_flat[1]), int(rgb_flat[2])
+            # Чтение точных каналов цвета кузова автомобиля
+            rgb_single = pixel_rgb[0, 0]
+            r_val, g_val, b_val = int(rgb_single[0]), int(rgb_single[1]), int(rgb_single[2])
             
-            # Динамические вычисления финансовых показателей
+            # Финансовый блок премии
             val_annual = base_premium_annual * predicted_crf
             val_monthly = val_annual / 12.0
             d_annual = val_annual - base_premium_annual
@@ -204,3 +198,7 @@ if uploaded_file is not None:
             
             # --- БЛОК СТРАХОВОЙ ПРЕМИИ ---
             st.markdown("---")
+            st.subheader("➡️ Smart Insurance Premium Adjustment")
+            st.write(f"Base profile: **{base_premium_annual:.2f} {currency_symbol}/year** ({base_premium_monthly:.2f} {currency_symbol}/month).")
+            
+            st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
