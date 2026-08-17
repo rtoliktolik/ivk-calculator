@@ -100,8 +100,8 @@ st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: bold !important; }
-    [data-testid="stMetricLabel"] { font-size: 0.9rem !important; }
+    [data-testid="stMetricValue"] { font-size: 1.6rem !important; font-weight: bold !important; }
+    [data-testid="stMetricLabel"] { font-size: 0.85rem !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -113,18 +113,19 @@ else:
 
 st.markdown("---")
 
+# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
+st.sidebar.markdown("---")
 st.sidebar.header("💰 Insurance Profile")
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
-
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-st.session_state["stored_premium_annual"] = float(base_premium_annual)
-st.session_state["stored_premium_monthly"] = float(base_premium_annual / 12.0)
-st.session_state["stored_currency"] = str(currency_symbol)
+# Базовый контейнер в боковой панели, который заполнится результатами расчетов ниже
+sidebar_calc_space = st.sidebar.empty()
 
+# --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -132,6 +133,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
+    # ➡️ ВЫЧИСЛЕНИЕ МАСКИ И ЦВЕТА КУЗОВА
     temp_mask = np.zeros((h, w), dtype=np.uint8)
     r_val, g_val, b_val = 128, 128, 128
     
@@ -149,8 +151,6 @@ if uploaded_file is not None:
         model = YOLO("yolov8n-seg.pt")
         results = model(img, verbose=False)
         car_mask = np.zeros((h, w), dtype=np.uint8)
-        
-        # ТОЧНО ЗАПОЛНЕНО: Классы YOLO прописаны без ошибок и пустот
         VALID_VEHICLE_CLASSES = [2, 5, 7]
         
         for result in results:
@@ -167,16 +167,40 @@ if uploaded_file is not None:
             
             mask_uint8 = cv2.convertScaleAbs(temp_mask)
             mean_bgr = cv2.mean(img, mask=mask_uint8)
-            b_val, g_val, r_val = int(mean_bgr[0]), int(mean_bgr[1]), int(mean_bgr[2])
+            b_val = int(mean_bgr[0])
+            g_val = int(mean_bgr[1])
+            r_val = int(mean_bgr[2])
         else:
             r_val, g_val, b_val = 128, 128, 128
 
-    # СТРОИМ ДВУХКОЛОНОЧНЫЙ МАКЕТ
+    # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
+    p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
+    delta_L = float(abs(p_L - BG_L))
+    delta_ab = float(np.linalg.norm(np.array([p_a, p_b]) - np.array([BG_A, BG_B])))
+    ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
+    predicted_crf = predict_crf_by_function(ivk_value)
+    
+    base_premium_monthly = float(base_premium_annual / 12.0)
+    val_annual = float(base_premium_annual * predicted_crf)
+    val_monthly = float(val_annual / 12.0)
+    d_annual = float(val_annual - base_premium_annual)
+    d_monthly = float(val_monthly - base_premium_monthly)
+
+    # ➡️ ОТРИСОВКА В БОКОВОЙ ПАНЕЛИ (ПО ТВОЕЙ ИДЕЕ)
+    with sidebar_calc_space.container():
+        st.write("**🧮 Live Premium Calculation**")
+        st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr ({base_premium_monthly:.2f} {currency_symbol}/mo)")
+        
+        # Красивые метрики в левой панели с дельтами изменений тарифа
+        st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
+        st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
+
+    # СТРОИМ СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
-        st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 42px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
         
         manual_mode = st.checkbox("🎯 Enable manual target correction", value=False, key="manual_checkbox")
         final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
@@ -201,32 +225,3 @@ if uploaded_file is not None:
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
             else:
-                st.error("❌ AI could not find a vehicle. Please enable manual target correction.")
-            
-        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
-
-    with col_right_data:
-        p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
-        
-        delta_L = float(abs(p_L - BG_L))
-        delta_ab = float(np.linalg.norm(np.array([p_a, p_b]) - np.array([BG_A, BG_B])))
-        ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
-        predicted_crf = predict_crf_by_function(ivk_value)
-        
-        s_annual = st.session_state["stored_premium_annual"]
-        s_monthly = st.session_state["stored_premium_monthly"]
-        s_cur = st.session_state["stored_currency"]
-        
-        val_annual = float(s_annual * predicted_crf)
-        val_monthly = float(val_annual / 12.0)
-        d_annual = float(val_annual - s_annual)
-        d_monthly = float(val_monthly - s_monthly)
-        
-        st.subheader("📊 Express Analysis Results")
-        
-        col_ivk, col_crf = st.columns(2)
-        with col_ivk:
-            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
-        with col_crf:
-            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-        
