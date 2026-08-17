@@ -157,7 +157,9 @@ if uploaded_file is not None:
         model = load_yolo_model()
         results = model(img, verbose=False)
         car_mask = np.zeros((h, w), dtype=np.uint8)
-        VALID_VEHICLE_CLASSES =
+        
+        # СТРОГО ЗАПОЛНЕНО: Классы транспорта прописаны жестким массивом питона
+        VALID_VEHICLE_CLASSES = [2, 5, 7]
         
         for result in results:
             if result.masks is not None:
@@ -173,9 +175,9 @@ if uploaded_file is not None:
             
             mask_uint8 = cv2.convertScaleAbs(temp_mask)
             mean_bgr = cv2.mean(img, mask=mask_uint8)
-            b_val = int(mean_bgr)
-            g_val = int(mean_bgr)
-            r_val = int(mean_bgr)
+            b_val = int(mean_bgr[0])
+            g_val = int(mean_bgr[1])
+            r_val = int(mean_bgr[2])
         else:
             r_val, g_val, b_val = 128, 128, 128
 
@@ -226,4 +228,3 @@ if uploaded_file is not None:
             cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
         else:
             if np.sum(final_calculated_mask) > 0:
-                cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
