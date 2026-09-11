@@ -166,31 +166,27 @@ if uploaded_file is not None:
     
     with col_left_img:
         if analysis_mode == "Ручной маркер (Прямой клик мыши)":
-            st.markdown("**🎯 Кликните мышкой в любую точку прямо на фотографии машины для замера:**")
+            st.markdown("**🎯 Кликните мышкой в любую точку кузова автомобиля для фиксации прицела:**")
             
             # Переводим BGR в RGB для корректного Plotly
             rgb_view = cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB)
             
-            # Отрисовываем картинку как интерактивную карту Plotly, которая ловит клики
             fig = px.imshow(rgb_view)
             fig.update_layout(
                 width=display_w, height=display_h,
                 margin=dict(l=0, r=0, t=0, b=0),
                 xaxis=dict(showgrid=False, zeroline=False, visible=False),
                 yaxis=dict(showgrid=False, zeroline=False, visible=False),
-                clickmode='event+select'
             )
             
-            # Ловим событие клика по картинке в переменную click_event
+            # ИСПРАВЛЕНО: Новый строгий перехват структуры клика Plotly в Streamlit 1.26+
             click_event = st.plotly_chart(fig, config={'displayModeBar': False})
             
-            # Математический перехват координат точки клика в реальном времени
-            if click_event and 'lassoPoints' not in str(click_event):
+            if click_event is not None and "points" in click_event:
                 try:
-                    # Извлекаем точные пиксели X и Y клика из Plotly-структуры data
-                    point_data = click_event['selection']['points'][0]
-                    new_x = int(point_data['x'])
-                    new_y = int(point_data['y'])
+                    point_data = click_event["points"][0]
+                    new_x = int(point_data["x"])
+                    new_y = int(point_data["y"])
                     
                     if new_x != st.session_state.cx or new_y != st.session_state.cy:
                         st.session_state.cx = new_x
@@ -199,8 +195,12 @@ if uploaded_file is not None:
                 except Exception:
                     pass
         else:
-            # Обычный вывод для автоматического ИИ-режима
             st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Автоматическая зона сканирования ИИ", width=520)
             
         # Вывод точной цветовой плашки под картинкой автомобиля
         color_patch_bgr = np.full((38, display_w, 3), (b_val, g_val, r_val), dtype=np.uint8)
+        st.image(cv2.cvtColor(color_patch_bgr, cv2.COLOR_BGR2RGB), caption=f"Образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
+
+    with col_right_data:
+        st.markdown("### 📊 Результаты экспресс-анализа")
+        render_analytics_panel(b_val, g_val, r_val, db_tolerance, base_premium_annual, currency_symbol, sidebar_calc_space)
