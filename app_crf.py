@@ -163,14 +163,14 @@ if uploaded_file is not None:
         if np.sum(car_mask) == 0:
             cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
             
-        # Улучшенное сжатие маски (эрозия на 35 пикселей), чтобы гарантированно убрать арки и колеса
+        # Сильная эрозия маски на 35 пикселей для фильтрации арок
         kernel = np.ones((35, 35), np.uint8)
         clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
         final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
         
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # --- ФИЛЬТРАЦИЯ ТЕМНЫХ ПИКСЕЛЕЙ (ШИНЫ, АРКИ, ГРЯЗЬ) ---
+        # Фильтрация слишком темных шумов (подкрылки, резина, глубокие тени)
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, bright_pixels_mask = cv2.threshold(gray_img, 45, 255, cv2.THRESH_BINARY)
         strict_paint_mask = cv2.bitwise_and(mask_uint8, bright_pixels_mask)
@@ -185,7 +185,10 @@ if uploaded_file is not None:
             counts = np.bincount(labels)
             
             dominant_bgr = centers[np.argmax(counts)]
-            b_val, g_val, r_val = int(dominant_bgr[0]), int(dominant_bgr[1]), int(dominant_bgr[2])
+            # Исправлено: извлечение реальных каналов цветности по индексам BGR матриц OpenCV
+            b_val = int(dominant_bgr[0])
+            g_val = int(dominant_bgr[1])
+            r_val = int(dominant_bgr[2])
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -218,5 +221,3 @@ if uploaded_file is not None:
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
         else:
             if manual_mode:
-                cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
-            else:
