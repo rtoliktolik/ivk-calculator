@@ -124,7 +124,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Резервные дефолтные значения цвета кузова (бордовый металлик)
+    # Резервные значения цвета (чистый бордовый металлик)
     b_val, g_val, r_val = 54, 53, 136
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
@@ -160,19 +160,17 @@ if uploaded_file is not None:
         kernel = np.ones((40, 40), np.uint8)
         clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
         
-        # 2. Адаптивная очистка от стекол, фар и радиаторной решетки
+        # 2. Адаптивная очистка от стекол, фар и радиаторной решетки по HSV каналам
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
         _, dark_noise_mask = cv2.threshold(gray_img, 35, 255, cv2.THRESH_BINARY)
         _, bright_glare_mask = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY_INV)
         valid_tones = cv2.bitwise_and(dark_noise_mask, bright_glare_mask)
         
         hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        h_split = cv2.split(hsv_img)
-        s_channel = h_split[1]
+        hsv_channels = cv2.split(hsv_img)
+        s_channel = hsv_channels[1]
         
         _, chromatic_mask = cv2.threshold(s_channel, 40, 255, cv2.THRESH_BINARY)
-        
         paint_filter = cv2.bitwise_and(valid_tones, chromatic_mask)
         final_calculated_mask = cv2.bitwise_and(clean_paint_mask, paint_filter)
         
@@ -181,15 +179,15 @@ if uploaded_file is not None:
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # Исправлено: безопасная проверка размеров массива NumPy индексов
+        # Безопасное попиксельное извлечение цвета без уязвимых условий
         pixel_indices = np.where(mask_uint8 > 0)
-        if pixel_indices[0].size > 0:
-            selected_pixels = img[pixel_indices]
-            average_channels = np.mean(selected_pixels, axis=0)
-            # Исправлено: точное распределение каналов BGR кузова спорткара по переменным
-            b_val = int(np.round(average_channels[0]))
-            g_val = int(np.round(average_channels[1]))
-            r_val = int(np.round(average_channels[2]))
+        selected_pixels = img[pixel_indices]
+        average_channels = np.mean(selected_pixels, axis=0) if pixel_indices[0].size > 0 else [180, 80, 30]
+        
+        # Надежное присвоение BGR каналов кузова спорткара
+        b_val = int(np.round(average_channels[0]))
+        g_val = int(np.round(average_channels[1]))
+        r_val = int(np.round(average_channels[2]))
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -209,7 +207,7 @@ if uploaded_file is not None:
         st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
         st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
 
-    # КОМПАКТНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ С ОГРАНИЧЕНИЕМ ШИРИНЫ КАРТИНКИ
+    # КОМПАКТНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
     col_left_img, col_right_data = st.columns([1.1, 0.9])
     
     with col_left_img:
@@ -218,4 +216,8 @@ if uploaded_file is not None:
         
         visual_img = img.copy()
         cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
         if len(cnts) > 0 and not manual_mode:
+            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
+        else:
+            if manual_mode:
