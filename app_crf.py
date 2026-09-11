@@ -131,8 +131,8 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Резервные дефолтные значения цвета (будут переписаны при успешном анализе)
-    r_val, g_val, b_val = 30, 80, 180
+    # Резервные дефолтные значения цвета кузова (синий металлик)
+    b_val, g_val, r_val = 180, 80, 30
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
     manual_mode = st.checkbox("🎯 Включить ручную коррекцию точки анализа", value=False, key="manual_checkbox")
@@ -143,7 +143,7 @@ if uploaded_file is not None:
         cy = st.slider("По вертикали (Y)", 0, h, int(h * 0.48), step=2, key="slider_cy")
         final_calculated_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
         b_raw, g_raw, r_raw = img[cy, cx]
-        r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
+        b_val, g_val, r_val = int(b_raw), int(g_raw), int(r_raw)
     else:
         car_mask = np.zeros((h, w), dtype=np.uint8)
         
@@ -163,34 +163,23 @@ if uploaded_file is not None:
         if np.sum(car_mask) == 0:
             cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
             
-        # Сильная эрозия маски на 35 пикселей для фильтрации арок
+        # Сильная эрозия маски на 35 пикселей, чтобы гарантированно убрать арки и колеса
         kernel = np.ones((35, 35), np.uint8)
         clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
         final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
         
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # Фильтрация слишком темных шумов (подкрылки, резина, глубокие тени)
+        # Фильтрация темных шумов (подкрылки, резина, глубокие тени)
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, bright_pixels_mask = cv2.threshold(gray_img, 45, 255, cv2.THRESH_BINARY)
         strict_paint_mask = cv2.bitwise_and(mask_uint8, bright_pixels_mask)
         
-        pixels = img[strict_paint_mask > 0]
-        
-        if len(pixels) > 0:
-            pixels_float = np.float32(pixels)
-            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 15, 1.0)
-            _, labels, centers = cv2.kmeans(pixels_float, 3, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
-            labels = labels.flatten()
-            counts = np.bincount(labels)
-            
-            dominant_bgr = centers[np.argmax(counts)]
-            b_val = int(dominant_bgr[0])
-            g_val = int(dominant_bgr[1])
-            r_val = int(dominant_bgr[2])
-        else:
-            # Заглушка, чтобы ветка else не оставалась пустой
-            b_val, g_val, r_val = 180, 80, 30
+        # Стабильное извлечение цвета без логических условий if/else
+        mean_bgr = cv2.mean(img, mask=strict_paint_mask)
+        b_val = int(mean_bgr[0]) if mean_bgr[0] > 0 else 180
+        g_val = int(mean_bgr[1]) if mean_bgr[1] > 0 else 80
+        r_val = int(mean_bgr[2]) if mean_bgr[2] > 0 else 30
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -222,3 +211,9 @@ if uploaded_file is not None:
         if len(cnts) > 0 and not manual_mode:
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
         else:
+            if manual_mode:
+                cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+            else:
+                cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
+            
+        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона сканирования лакокрасочного покрытия", use_container_width=True)
