@@ -1,5 +1,4 @@
 streamlit
 opencv-python-headless
 numpy
-streamlit-image-coordinates
-plotly
+ultralytics
