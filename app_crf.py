@@ -170,10 +170,31 @@ if uploaded_file is not None:
                 final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
                 
                 mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
-                mean_bgr = cv2.mean(img, mask=mask_uint8)
-                b_val = int(mean_bgr[0])
-                g_val = int(mean_bgr[1])
-                r_val = int(mean_bgr[2])
+                
+                # --- ИНТЕЛЛЕКТУАЛЬНЫЙ ВЫБОР ДОМИНАНТНОГО ЦВЕТА ЧЕРЕЗ K-MEANS ---
+                pixels = img[mask_uint8 > 0]
+                
+                if len(pixels) > 0:
+                    pixels_float = np.float32(pixels)
+                    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+                    k_clusters = 3
+                    flags = cv2.KMEANS_RANDOM_CENTERS
+                    
+                    # Разделяем кузов на 3 цветовые группы (Основной цвет, блики, тени)
+                    _, labels, centers = cv2.kmeans(pixels_float, k_clusters, None, criteria, 10, flags)
+                    
+                    labels = labels.flatten()
+                    counts = np.bincount(labels)
+                    
+                    # Находим самый большой кластер (истинная эмаль без пересветов)
+                    dominant_cluster_idx = np.argmax(counts)
+                    dominant_bgr = centers[dominant_cluster_idx]
+                    
+                    b_val = int(dominant_bgr[0])
+                    g_val = int(dominant_bgr[1])
+                    r_val = int(dominant_bgr[2])
+                else:
+                    b_val, g_val, r_val = 128, 128, 128
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -204,22 +225,3 @@ if uploaded_file is not None:
         
         visual_img = img.copy()
         if manual_mode:
-            ch_p = create_checkerboard_pattern(w, h)
-            visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
-            cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
-        else:
-            cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
-            
-        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
-
-    with col_right_data:
-        st.subheader("📊 Express Analysis Results")
-        
-        col_ivk, col_crf = st.columns(2)
-        with col_ivk:
-            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
-        with col_crf:
-            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-        
-        status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
