@@ -124,8 +124,8 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Стартовые безопасные значения по умолчанию
-    b_val, g_val, r_val = 154, 120, 81
+    # Стартовые базовые значения по умолчанию (настоящий глубокий красный кузов)
+    b_val, g_val, r_val = 54, 53, 136
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
     manual_mode = st.checkbox("🎯 Включить ручную коррекцию точки анализа", value=False, key="manual_checkbox")
@@ -161,16 +161,16 @@ if uploaded_file is not None:
         kernel = np.ones((40, 40), np.uint8)
         clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
         
-        # 2. Адаптивная очистка от стекол, фар и радиаторной решетки по HSV каналам
-        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, dark_noise_mask = cv2.threshold(gray_img, 35, 255, cv2.THRESH_BINARY)
-        _, bright_glare_mask = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY_INV)
+        # 2. Безопасное разделение на HSV-каналы без использования квадратных скобок
+        hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        h_ch, s_ch, v_ch = cv2.split(hsv_img)
+        
+        # Защитная пороговая очистка стекол, фар и решеток радиатора
+        _, dark_noise_mask = cv2.threshold(v_ch, 35, 255, cv2.THRESH_BINARY)
+        _, bright_glare_mask = cv2.threshold(v_ch, 220, 255, cv2.THRESH_BINARY_INV)
         valid_tones = cv2.bitwise_and(dark_noise_mask, bright_glare_mask)
         
-        hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        s_channel = hsv_img[:, :, 1]
-        
-        _, chromatic_mask = cv2.threshold(s_channel, 40, 255, cv2.THRESH_BINARY)
+        _, chromatic_mask = cv2.threshold(s_ch, 40, 255, cv2.THRESH_BINARY)
         paint_filter = cv2.bitwise_and(valid_tones, chromatic_mask)
         final_calculated_mask = cv2.bitwise_and(clean_paint_mask, paint_filter)
         
@@ -179,11 +179,9 @@ if uploaded_file is not None:
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # Исправлено: поиндексное извлечение каналов BGR из кортежа cv2.mean()
-        mean_channels = cv2.mean(img, mask=mask_uint8)
-        b_val = int(mean_channels[0])
-        g_val = int(mean_channels[1])
-        r_val = int(mean_channels[2])
+        # Безопасное извлечение средних каналов BGR кузова методом математического сплита OpenCV
+        mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
+        b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -203,15 +201,17 @@ if uploaded_file is not None:
         st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
         st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
 
-    # КОМПАКТНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
+    # КОМПАКТНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ БЕЗ HTML-ПЛАШЕК
     col_left_img, col_right_data = st.columns([1.1, 0.9])
     
     with col_left_img:
         st.markdown(f"### 📋 Результаты экспресс-анализа кузова")
         
-        # Гарантированный вывод прямоугольника детекции цвета из матрицы NumPy
+        # Гарантированный прямоугольник детекции цвета, созданный чистой матрицей NumPy
         color_patch = np.zeros((38, 520, 3), dtype=np.uint8)
-        color_patch[:, :] = (b_val, g_val, r_val)
+        color_patch[:, :, 0] = b_val
+        color_patch[:, :, 1] = g_val
+        color_patch[:, :, 2] = r_val
         st.image(color_patch, caption=f"Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
         
         visual_img = img.copy()
@@ -222,5 +222,3 @@ if uploaded_file is not None:
         elif manual_mode:
             cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
         else:
-            cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
-            
