@@ -185,11 +185,12 @@ if uploaded_file is not None:
     with col_left_img:
         st.markdown(f"### 📋 Результаты экспресс-анализа кузова")
         
-        # Однострочное бесконфликтное создание плашки цвета через команду np.full
-        color_patch = np.full((38, 520, 3), (b_val, g_val, r_val), dtype=np.uint8)
-        st.image(color_patch, caption=f"Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
+        # Создаем плашку в BGR и конвертируем в RGB для корректного отображения красного цвета в Streamlit
+        color_patch_bgr = np.full((38, 520, 3), (b_val, g_val, r_val), dtype=np.uint8)
+        color_patch_rgb = cv2.cvtColor(color_patch_bgr, cv2.COLOR_BGR2RGB)
+        st.image(color_patch_rgb, caption=f"Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
         
-        # Прямая отрисовка контура ИИ поверх кузова в одну команду
+        # Прямая отрисовка контура ИИ поверх кузова
         visual_img = img.copy()
         cnts, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
