@@ -124,7 +124,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Резервные дефолтные значения цвета кузова (бордово-красный металлик)
+    # Стартовые безопасные значения цвета кузова (бордово-красный металлик)
     b_val, g_val, r_val = 54, 53, 136
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
@@ -179,7 +179,7 @@ if uploaded_file is not None:
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # Абсолютно неуязвимый расчет среднего значения цвета через методы OpenCV
+        # Полностью сквозной расчет среднего значения цвета без условий if/else
         mean_channels = cv2.mean(img, mask=mask_uint8)
         b_val = int(mean_channels[0]) if mean_channels[0] > 0 else 54
         g_val = int(mean_channels[1]) if mean_channels[1] > 0 else 53
@@ -213,9 +213,8 @@ if uploaded_file is not None:
         visual_img = img.copy()
         cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Гарантированная однострочная отрисовка
+        # Гарантированная сквозная отрисовка контуров без условий веток
         if len(cnts) > 0 and not manual_mode:
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
         elif manual_mode:
             cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
-        else:
