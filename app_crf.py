@@ -120,15 +120,17 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
+    # ГАРАНТИРОВАННАЯ ИНИЦИАЛИЗАЦИЯ СЛАЙДЕРОВ КООРДИНАТ ДЛЯ НАДЕЖНОЙ РАБОТЫ STREAMLIT
+    # Обернуты в аккуратный скрываемый контейнер, который открывается при активации ручного режима
+    with st.expander("🎛️ Панель управления ручным прицелом маркера", expanded=manual_mode):
+        cx = st.slider("Позиция прицела по горизонтали (X)", 0, w, int(w * 0.45), step=2)
+        cy = st.slider("Позиция прицела по вертикали (Y)", 0, h, int(h * 0.52), step=2)
+    
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     visual_img = img.copy()
 
-    # Изолированное и строгое разделение логики режимов
     if manual_mode:
-        # 1. РУЧНОЙ РЕЖИМ: Слайдеры появляются только при активации чекбокса
-        cx = st.slider("Позиция прицела по горизонтали (X)", 0, w, int(w * 0.45), step=2)
-        cy = st.slider("Позиция прицела по вертикали (Y)", 0, h, int(h * 0.52), step=2)
-        
+        # 1. РУЧНОЙ РЕЖИМ (Работает по координатам cx и cy из постоянного пула памяти)
         cv2.circle(final_calculated_mask, (cx, cy), 15, 255, -1)
         cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
         
@@ -136,7 +138,7 @@ if uploaded_file is not None:
         mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
         b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
     else:
-        # 2. АВТОМАТИЧЕСКИЙ РЕЖИМ ИИ
+        # 2. АВТОМАТИЧЕСКИЙ РЕЖИМ ИИ (YOLO + Цветовые фильтры кузова)
         car_mask = np.zeros((h, w), dtype=np.uint8)
         try:
             from ultralytics import YOLO
@@ -220,8 +222,3 @@ if uploaded_file is not None:
         
         st.metric(label="Индекс визуального контраста (ИВК)", value=f"{ivk_value:.2f}")
         st.metric(label="Фактор риска цвета (CRF)", value=f"{predicted_crf:.2f}")
-        
-        status_text = "НИЗКИЙ РИСК 👍" if predicted_crf < 1.0 else ("ВЫСОКИЙ РИСК ⚠️" if predicted_crf > 1.0 else "НОРМА")
-        st.info(f"Вердикт анализа: **{status_text}**")
-        
-        db_res = simulate_database_lookup(ivk_value, db_tolerance)
