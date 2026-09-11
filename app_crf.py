@@ -84,9 +84,26 @@ def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
     return {"total_cars": total_cars_in_cloud, "groups": matched_groups}
 
 # ---------------------------------------------------------------------------
-# Настройка веб-интерфейса
+# Веб-интерфейс конфигурация и CSS стили для вертикального слайдера
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FARRATE-X | Калькулятор ИВК")
+
+# Инжектим CSS, чтобы развернуть ползунок оси Y вертикально
+st.markdown("""
+    <style>
+    .vertical-slider div[data-testid="stSlider"] {
+        transform: rotate(270deg);
+        transform-origin: center;
+        margin-top: 130px;
+        margin-left: -50px;
+        width: 320px !important;
+    }
+    .vertical-slider div[data-testid="stSlider"] label {
+        transform: rotate(90deg);
+        margin-bottom: -15px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 logo_path = "logo.png"
 if os.path.exists(logo_path):
@@ -115,61 +132,85 @@ if uploaded_file is not None:
     file_bytes = np.frombuffer(uploaded_file.getvalue(), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
-    
-    # Жесткая и гарантированная инициализация ползунков в процентной шкале
-    with st.expander("🎛️ Панель точечного выбора зоны сканирования кузова", expanded=True):
-        pct_x = st.slider("Положение маркера по горизонтали (X в %)", 0, 100, 45, step=1)
-        pct_y = st.slider("Положение маркера по вертикали (Y в %)", 0, 100, 68, step=1)
-        
-    # Моментальный пересчет процентов ползунков в реальные пиксели фотографии кузова
-    cx = int((pct_x / 100.0) * w)
-    cy = int((pct_y / 100.0) * h)
-    
-    # Создаем локальную маску 30х30 пикселей вокруг точки прицела
-    final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.circle(final_calculated_mask, (cx, cy), 15, 255, -1)
-    
-    # Отрисовываем жирный красный перекрестный маркер прицела на изображении кузова
-    visual_img = img.copy()
-    cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 45, 4)
-    
-    mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
-    mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
-    b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
 
-    # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
-    p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
-    ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
-    predicted_crf = predict_crf_by_function(ivk_value)
+    # ГЛАВНЫЙ КОМПАКТНЫЙ МАКЕТ
+    col_left_layout, col_right_data = st.columns([1.2, 0.8])
     
-    base_premium_monthly = float(base_premium_annual / 12.0)
-    val_annual = float(base_premium_annual * predicted_crf)
-    val_monthly = float(val_annual / 12.0)
-    get_d_annual = float(val_annual - base_premium_annual)
-    get_d_monthly = float(val_monthly - base_premium_monthly)
-
-    # ОБНОВЛЕНИЕ БОКОВОЙ ПАНЕЛИ
-    with sidebar_calc_space.container():
-        st.write("**🧮 Расчет текущей премии**")
-        st.write(f"Базовая: {base_premium_annual:.2f} {currency_symbol}/год")
-        st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
-        st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
-
-    # КОМПАКТНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
-    col_left_img, col_right_data = st.columns([1.1, 0.9])
-    
-    with col_left_img:
+    with col_left_layout:
         st.markdown(f"### 📋 Результаты экспресс-анализа кузова")
         
-        # Создаем плашку цвета из матрицы NumPy и переводим в BGR -> RGB
-        color_patch_bgr = np.full((38, 520, 3), (b_val, g_val, r_val), dtype=np.uint8)
-        color_patch_rgb = cv2.cvtColor(color_patch_bgr, cv2.COLOR_BGR2RGB)
-        st.image(color_patch_rgb, caption=f"Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
+        # Строим общую сетку для позиционирования слайдеров вокруг фото авто
+        # col_v_slider — вертикальная ось слева, col_img_frame — изображение
+        col_v_slider, col_img_frame = st.columns([0.15, 0.85])
+        
+        with col_v_slider:
+            # Оборачиваем в кастомный класс CSS для разворота на 270 градусов
+            st.markdown('<div class="vertical-slider">', unsafe_allow_html=True)
+            # В вертикальном слайдере инвертируем шаг: 100 вверху, 0 внизу
+            pct_y = st.slider("Ось Y (%)", 0, 100, 48, step=1, label_visibility="collapsed")
+            st.markdown('</div>', unsafe_allow_html=True)
             
-        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона сканирования лакокрасочного покрытия", width=520)
+        with col_img_frame:
+            # Математический пересчет инвертированных процентов Y и процентов X в пиксели фото
+            # Так как слайдер Streamlit идет снизу вверх, вычитаем значение из 100
+            real_pct_y = 100 - pct_y
+            
+            # Маска для выбора цвета
+            final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
+            
+            # Отрисовываем адаптивный прицел методом инверсии цвета (XOR)
+            visual_img = img.copy()
+            
+            # Временный слой для маски перекрестия прицела
+            cross_mask = np.zeros((h, w, 3), dtype=np.uint8)
+            
+            # Будет вызвано динамически после рендеринга горизонтального слайдера ниже
+            # Создаем контейнер-заглушку для картинки, чтобы слайдер встал строго под ней
+            img_placeholder = st.empty()
+            
+        # Горизонтальный слайдер располагается строго под картинкой
+        pct_x = st.slider("Ось X (%) — Перемещение прицела по ширине кузова", 0, 100, 33, step=1)
+        
+        # Рассчитываем точные координаты пикселей
+        cx = int((pct_x / 100.0) * w)
+        cy = int((real_pct_y / 100.0) * h)
+        
+        # Заполняем маску сбора цвета
+        cv2.circle(final_calculated_mask, (cx, cy), 15, 255, -1)
+        mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
+        mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
+        b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
+        
+        # Чертим инверсный прицел на слое cross_mask
+        # Две пересекающиеся жирные линии
+        cv2.line(cross_mask, (cx - 40, cy), (cx + 40, cy), (255, 255, 255), 4)
+        cv2.line(cross_mask, (cx, cy - 40), (cx, cy + 40), (255, 255, 255), 4)
+        # Центральный прицельный маркер
+        cv2.circle(cross_mask, (cx, cy), 5, (255, 255, 255), -1)
+        
+        # Накладываем слой прицела методом XOR инверсии на изображение авто
+        visual_img = cv2.bitwise_xor(visual_img, cross_mask)
+        
+        # Отрендериваем собранную картинку и плашку цвета в их законные места
+        with col_img_frame:
+            color_patch_bgr = np.full((38, 440, 3), (b_val, g_val, r_val), dtype=np.uint8)
+            color_patch_rgb = cv2.cvtColor(color_patch_bgr, cv2.COLOR_BGR2RGB)
+            st.image(color_patch_rgb, caption=f"Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
+            img_placeholder.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Интерактивная координатная инспекция эмали", width=440)
 
     with col_right_data:
         st.markdown("### 📊 Результаты экспресс-анализа")
+        
+        # Расчет индексов
+        p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
+        ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
+        predicted_crf = predict_crf_by_function(ivk_value)
+        
+        base_premium_monthly = float(base_premium_annual / 12.0)
+        val_annual = float(base_premium_annual * predicted_crf)
+        val_monthly = float(val_annual / 12.0)
+        get_d_annual = float(val_annual - base_premium_annual)
+        get_d_monthly = float(val_monthly - base_premium_monthly)
         
         st.metric(label="Индекс визуального контраста (ИВК)", value=f"{ivk_value:.2f}")
         st.metric(label="Фактор риска цвета (CRF)", value=f"{predicted_crf:.2f}")
@@ -182,3 +223,8 @@ if uploaded_file is not None:
         st.markdown(f"**🗄️ Страховое облако Big Data:**")
         st.write(f"• **Активных совпадений в кластере:** {db_res['total_cars']:,} шт.")
         st.write(f"• **Категории риска из базы:** {', '.join(db_res['groups'])}")
+
+        # Динамическое обновление тарифов в боковой панели
+        with sidebar_calc_space.container():
+            st.write("**🧮 Расчет текущей премии**")
+            st.write(f"Базовая: {base_premium_annual:.2f} {currency_symbol}/год")
