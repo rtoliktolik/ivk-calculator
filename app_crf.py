@@ -43,7 +43,7 @@ def rgb_to_lab(r, g, b):
     if X > 0.008856: X = X ** (1/3)
     else: X = (7.787 * X) + (16 / 116)
     if Y > 0.008856: Y = Y ** (1/3)
-    else: var_Y = (7.787 * Y) + (16 / 116)
+    else: Y = (7.787 * Y) + (16 / 116)
     if Z > 0.008856: Z = Z ** (1/3)
     else: Z = (7.787 * Z) + (16 / 116)
 
@@ -124,8 +124,8 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Жесткие базовые числа цвета без условий, которые мог бы стереть фильтр
-    b_val, g_val, r_val = 63, 62, 141
+    # Стартовые безопасные значения
+    b_val, g_val, r_val = 54, 53, 136
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
     manual_mode = st.checkbox("🎯 Включить ручную коррекцию точки анализа", value=False, key="manual_checkbox")
@@ -177,11 +177,10 @@ if uploaded_file is not None:
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # Сквозное получение каналов без уязвимых текстовых конструкций
         mean_channels = cv2.mean(img, mask=mask_uint8)
-        b_val = int(mean_channels[0])
-        g_val = int(mean_channels[1])
-        r_val = int(mean_channels[2])
+        b_val = int(mean_channels)
+        g_val = int(mean_channels)
+        r_val = int(mean_channels)
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -201,24 +200,29 @@ if uploaded_file is not None:
         st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
         st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
 
-    # --- СТРОГО НАДЁЖНЫЙ ВЕРТИКАЛЬНЫЙ ВЫВОД ИНТЕРФЕЙСА ---
-    st.markdown(f"### 📋 Результаты экспресс-анализа кузова (RGB: {r_val}, {g_val}, {b_val})")
+    # КОМПАКТНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
+    col_left_img, col_right_data = st.columns([1.1, 0.9])
     
-    visual_img = img.copy()
-    cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    if len(cnts) > 0 and not manual_mode:
-        cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-    elif manual_mode:
-        cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
-    else:
-        cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
+    with col_left_img:
+        st.markdown(f"### 📋 Результаты экспресс-анализа кузова")
         
-    # Компактный размер изображения по центру экрана
-    st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Автоматически выделенная зона сканирования эмали кузова", width=540)
+        # ГАРАНТИРОВАННЫЙ ЦВЕТНОЙ ПРЯМОУГОЛЬНИК БЕЗ ИСПОЛЬЗОВАНИЯ HTML
+        color_patch = np.zeros((38, 520, 3), dtype=np.uint8)
+        color_patch[:, :] = (b_val, g_val, r_val)
+        st.image(color_patch, caption=f"Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
+        
+        visual_img = img.copy()
+        cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if len(cnts) > 0 and not manual_mode:
+            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
+        elif manual_mode:
+            cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+        else:
+            cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
+            
+        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона сканирования лакокрасочного покрытия", width=520)
 
-    # Вывод цифровых результатов крупными стандартными блоками
-    st.markdown("---")
-    st.metric(label="📊 Индекс визуального контраста кузова (ИВК)", value=f"{ivk_value:.2f}")
-    st.metric(label="📈 Коэффициент риска цвета (Color Risk Factor — CRF)", value=f"{predicted_crf:.2f}")
-    
+    with col_right_data:
+        st.markdown("### 📊 Результаты экспресс-анализа")
+        
