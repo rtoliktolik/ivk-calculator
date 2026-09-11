@@ -83,7 +83,7 @@ base_premium_annual = st.sidebar.number_input(label="Базовая годова
 # Режим автоматической ИИ-инспекции по умолчанию жестко зафиксирован
 st.sidebar.markdown("---")
 st.sidebar.header("🕹️ Управление замером")
-st.sidebar.info("🤖 Активирован автоматический режим ИИ YOLO")
+st.sidebar.info("🌐 Активирован динамический онлайн режим ИИ YOLO")
 
 sidebar_calc_space = st.sidebar.empty()
 
@@ -101,17 +101,18 @@ if uploaded_file is not None:
     b_val, g_val, r_val = 54, 53, 136
     visual_img = img.copy()
 
-    # СТРОГАЯ АВТОМАТИЧЕСКАЯ СЕГМЕНТАЦИЯ YOLO С ФИЛЬТРОМ КЛАССОВ ТРАНСПОРТА
+    # СТРОГАЯ АВТОМАТИЧЕСКАЯ СЕГМЕНТАЦИЯ YOLO С ОНЛАЙН СКАЧИВАНИЕМ И ФИЛЬТРОМ КЛАССОВ
     car_mask = np.zeros((display_h, display_w), dtype=np.uint8)
     try:
         from ultralytics import YOLO
-        model = YOLO("./yolov8n-seg.pt")
+        # Убрана точка перед слэшем — теперь модель подгружается напрямую из облака Ultralytics
+        model = YOLO("yolov8n-seg.pt")
         results = model(img, verbose=False)
         for result in results:
             if result.masks is not None:
                 for mask, cls in zip(result.masks.data, result.boxes.cls):
                     c_id = int(cls)
-                    # Жесткая проверка: пропускаем только легковые авто (2), автобусы (5) и грузовики (7)
+                    # Фильтр классов: пропускаем легковые авто (2), автобусы (5) и грузовики (7)
                     if (c_id == 2 or c_id == 5 or c_id == 7):
                         m_np = cv2.resize(mask.cpu().numpy(), (display_w, display_h))
                         car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
@@ -146,7 +147,7 @@ if uploaded_file is not None:
     cnts, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
     
-    # Безопасный расчет среднего значения цвета кузова через OpenCV
+    # Расчет среднего значения цвета кузова автомобиля через OpenCV
     mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
     b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
 
