@@ -155,7 +155,7 @@ if uploaded_file is not None:
             model = load_yolo_model()
             results = model(img, verbose=False)
             car_mask = np.zeros((h, w), dtype=np.uint8)
-            VALID_VEHICLE_CLASSES = [2, 5, 7] # Возвращено на место
+            VALID_VEHICLE_CLASSES = [2, 5, 7] # Исправлено: добавлены индексы классов
             
             for result in results:
                 if result.masks is not None:
@@ -222,5 +222,3 @@ if uploaded_file is not None:
     with col_left_img:
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
-        
-        visual_img = img.copy()
