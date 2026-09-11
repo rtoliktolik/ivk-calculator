@@ -105,7 +105,12 @@ st.sidebar.header("💰 Страховой профиль")
 currency_symbol = st.sidebar.selectbox("Выберите валюту:", ["€", "$", "£", "¥", "руб."])
 base_premium_annual = st.sidebar.number_input(label=f"Базовая годовая премия ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# Контейнер в боковой панели для расчетов
+# Слайдеры ручной коррекции (Вынесены в боковую панель)
+st.sidebar.markdown("---")
+st.sidebar.header("🎯 Коррекция точки прицела")
+manual_mode = st.sidebar.checkbox("Включить ручной прицел", value=False)
+
+# Контейнер в боковой панели для расчетов премии
 sidebar_calc_space = st.sidebar.empty()
 
 # --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
@@ -116,80 +121,69 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Резервная стартовая маска
+    # Координаты ручного прицела (Вынесены в основное тело для гарантированного рендеринга)
+    cx = st.slider("Позиция прицела по горизонтали (X)", 0, w, int(w * 0.45), step=2)
+    cy = st.slider("Позиция прицела по вертикали (Y)", 0, h, int(h * 0.52), step=2)
+    
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
-    car_mask = np.zeros((h, w), dtype=np.uint8)
-    
-    # БОКОВОЙ ИНТЕРФЕЙС УПРАВЛЕНИЯ ПРИЦЕЛОМ (Безопасный плоский вывод без if/else развилок)
-    st.sidebar.markdown("---")
-    st.sidebar.header("🎯 Коррекция точки прицела")
-    manual_mode = st.sidebar.checkbox("Активировать ручной прицел", value=False)
-    cx = st.sidebar.slider("Смещение по оси X (Ширина)", 0, w, int(w * 0.45), step=2)
-    cy = st.sidebar.slider("Смещение по оси Y (Высота)", 0, h, int(h * 0.52), step=2)
-    
-    # 1. Автоматическая ИИ-сегментация
-    try:
-        from ultralytics import YOLO
-        model = YOLO("yolov8n-seg.pt")
-        results = model(img, verbose=False)
-        for result in results:
-            if result.masks is not None:
-                for mask, cls in zip(result.masks.data, result.boxes.cls):
-                    c_id = int(cls)
-                    if (c_id == 2 or c_id == 5 or c_id == 7):
-                        m_np = cv2.resize(mask.cpu().numpy(), (w, h))
-                        car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
-    except Exception:
-        pass
+    visual_img = img.copy()
+
+    if manual_mode:
+        # Режим ручной инспекции кузова по маркеру-крестику
+        cv2.circle(final_calculated_mask, (cx, cy), 15, 255, -1)
+        cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
         
-    if np.sum(car_mask) == 0:
-        cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
+        mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
+        mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
+        b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
+    else:
+        # Автоматический ИИ-режим сегментации лакокрасочного покрытия кузова
+        car_mask = np.zeros((h, w), dtype=np.uint8)
+        try:
+            from ultralytics import YOLO
+            model = YOLO("yolov8n-seg.pt")
+            results = model(img, verbose=False)
+            for result in results:
+                if result.masks is not None:
+                    for mask, cls in zip(result.masks.data, result.boxes.cls):
+                        c_id = int(cls)
+                        if (c_id == 2 or c_id == 5 or c_id == 7):
+                            m_np = cv2.resize(mask.cpu().numpy(), (w, h))
+                            car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
+        except Exception:
+            pass
+            
+        if np.sum(car_mask) == 0:
+            cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
+            
+        # Сильная эрозия маски на 40 пикселей для удаления арок и колес
+        kernel = np.ones((40, 40), np.uint8)
+        clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
         
-    # Сжатие краев ИИ-маски
-    kernel = np.ones((40, 40), np.uint8)
-    clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
-    
-    # Адаптивный HSV-фильтр против стекол, фар и решеток радиатора
-    gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, dark_noise_mask = cv2.threshold(gray_img, 35, 255, cv2.THRESH_BINARY)
-    _, bright_glare_mask = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY_INV)
-    valid_tones = cv2.bitwise_and(dark_noise_mask, bright_glare_mask)
-    
-    hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    h_ch, s_ch, v_ch = cv2.split(hsv_img)
-    _, chromatic_mask = cv2.threshold(s_ch, 40, 255, cv2.THRESH_BINARY)
-    
-    paint_filter = cv2.bitwise_and(valid_tones, chromatic_mask)
-    ai_strict_mask = cv2.bitwise_and(clean_paint_mask, paint_filter)
-    
-    if np.sum(ai_strict_mask) == 0:
-        ai_strict_mask = clean_paint_mask
-
-    # ГЕОМЕТРИЧЕСКИЙ ПОИСК ЦЕНТРА МАСС ДЛЯ ЗАЩИТЫ ОТ ЗАСОРЕНИЯ АРОК И КОЛЕС
-    dist_transform = cv2.distanceTransform(ai_strict_mask, cv2.DIST_L2, 5)
-    _, _, _, max_loc = cv2.minMaxLoc(dist_transform)
-    core_x, core_y = max_loc
-    
-    # Строим защищенное «ядро» вокруг геометрического центра кузова
-    ai_core_mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.circle(ai_core_mask, (core_x, core_y), int(min(w, h) * 0.08), 1, -1)
-    final_ai_mask = cv2.bitwise_and(ai_strict_mask, ai_core_mask)
-    if np.sum(final_ai_mask) == 0:
-        final_ai_mask = ai_strict_mask
-
-    # Создаем маску для ручного режима инспекции
-    manual_mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.circle(manual_mask, (cx, cy), 15, 1, -1)
-
-    # Беспрепятственное переключение режима (математическое наложение без уязвимых if/else веток)
-    final_calculated_mask = cv2.bitwise_or(
-        cv2.bitwise_and(manual_mask, manual_mask, mask=cv2.convertScaleAbs(np.full((h, w), manual_mode, dtype=np.uint8))),
-        cv2.bitwise_and(final_ai_mask, final_ai_mask, mask=cv2.convertScaleAbs(np.full((h, w), not manual_mode, dtype=np.uint8)))
-    )
-
-    mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
-    mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
-    b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
+        # Адаптивный HSV-фильтр против стёкол фар и решеток
+        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, dark_noise_mask = cv2.threshold(gray_img, 35, 255, cv2.THRESH_BINARY)
+        _, bright_glare_mask = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY_INV)
+        valid_tones = cv2.bitwise_and(dark_noise_mask, bright_glare_mask)
+        
+        hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        h_ch, s_ch, v_ch = cv2.split(hsv_img)
+        _, chromatic_mask = cv2.threshold(s_ch, 40, 255, cv2.THRESH_BINARY)
+        
+        paint_filter = cv2.bitwise_and(valid_tones, chromatic_mask)
+        final_calculated_mask = cv2.bitwise_and(clean_paint_mask, paint_filter)
+        
+        if np.sum(final_calculated_mask) == 0:
+            final_calculated_mask = clean_paint_mask
+            
+        mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
+        
+        # Отрисовка сплошных контуров ИИ на кузове
+        cnts, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
+        
+        mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
+        b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -215,14 +209,16 @@ if uploaded_file is not None:
     with col_left_img:
         st.markdown(f"### 📋 Результаты экспресс-анализа кузова")
         
-        # Безопасное создание плашки цвета через np.full и перевод BGR -> RGB
+        # Создаем плашку цвета из матрицы NumPy и переводим в RGB для Streamlit
         color_patch_bgr = np.full((38, 520, 3), (b_val, g_val, r_val), dtype=np.uint8)
         color_patch_rgb = cv2.cvtColor(color_patch_bgr, cv2.COLOR_BGR2RGB)
         st.image(color_patch_rgb, caption=f"Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
-        
-        # Отрисовка контуров и маркеров
-        visual_img = img.copy()
-        cnts, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-        cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
             
+        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона сканирования лакокрасочного покрытия", width=520)
+
+    with col_right_data:
+        st.markdown("### 📊 Результаты экспресс-анализа")
+        
+        st.metric(label="Индекс визуального контраста (ИВК)", value=f"{ivk_value:.2f}")
+        st.metric(label="Фактор риска цвета (CRF)", value=f"{predicted_crf:.2f}")
+        
