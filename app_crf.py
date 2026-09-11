@@ -155,7 +155,7 @@ if uploaded_file is not None:
             model = load_yolo_model()
             results = model(img, verbose=False)
             car_mask = np.zeros((h, w), dtype=np.uint8)
-            VALID_VEHICLE_CLASSES = [2, 5, 7] # Исправлено: добавлены индексы классов
+            VALID_VEHICLE_CLASSES = [2, 5, 7] # Масив значень тепер точно на місці
             
             for result in results:
                 if result.masks is not None:
