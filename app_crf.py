@@ -106,7 +106,6 @@ st.sidebar.header("💰 Страховой профиль")
 currency_symbol = st.sidebar.selectbox("Выберите валюту:", ["\u20ac", "$", "\u00a3", "\u00a5", "руб."])
 base_premium_annual = st.sidebar.number_input(label=f"Базовая годовая премия ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# Автоматический режим жестко стоит первым по умолчанию
 st.sidebar.markdown("---")
 st.sidebar.header("🕹️ Управление замером")
 analysis_mode = st.sidebar.radio(
@@ -126,102 +125,109 @@ if uploaded_file is not None:
     img_raw = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     raw_h, raw_w, _ = img_raw.shape
     
-    # Оптимизация размера под вёрстку экрана
     display_w = 520
     display_h = int((display_w / raw_w) * raw_h)
     img = cv2.resize(img_raw, (display_w, display_h))
     
-    # Инициализация переменных сессии для хранения координат клика
+    # Хранение координат в сессии
     if "click_x" not in st.session_state or "click_y" not in st.session_state:
         st.session_state.click_x = int(display_w * 0.35)
         st.session_state.click_y = int(display_h * 0.60)
-    
+        
     b_val, g_val, r_val = 54, 53, 136
     visual_img = img.copy()
     
-    # КОМПАКТНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
+    # -----------------------------------------------------------------------
+    # МАТЕМАТИЧЕСКОЕ ЯДРО ВЫЧИСЛЕНИЙ (ВЫНЕСЕНО ВВЕРХ ДО ОТРИСОВКИ КОЛОНОК)
+    # -----------------------------------------------------------------------
+    if analysis_mode == "Ручной маркер (Клик мыши)":
+        cx, cy = st.session_state.click_x, st.session_state.click_y
+        
+        # Накладываем прицел для интерактивного поля кликов
+        cross_mask = np.zeros((display_h, display_w, 3), dtype=np.uint8)
+        cv2.line(cross_mask, (cx - 22, cy), (cx + 22, cy), (255, 255, 255), 3)
+        cv2.line(cross_mask, (cx, cy - 22), (cx, cy + 22), (255, 255, 255), 3)
+        cv2.circle(cross_mask, (cx, cy), 4, (255, 255, 255), -1)
+        visual_img = cv2.bitwise_xor(img.copy(), cross_mask)
+        
+        # Замер цвета вокруг прицела
+        color_mask = np.zeros((display_h, display_w), dtype=np.uint8)
+        cv2.circle(color_mask, (cx, cy), 8, 255, -1)
+        mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=color_mask)
+        b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
+    else:
+        # Автоматический режим ИИ
+        car_mask = np.zeros((display_h, display_w), dtype=np.uint8)
+        try:
+            from ultralytics import YOLO
+            model = YOLO("yolov8n-seg.pt")
+            results = model(img, verbose=False)
+            for result in results:
+                if result.masks is not None:
+                    for mask, cls in zip(result.masks.data, result.boxes.cls):
+                        c_id = int(cls)
+                        if (c_id == 2 or c_id == 5 or c_id == 7):
+                            m_np = cv2.resize(mask.cpu().numpy(), (display_w, display_h))
+                            car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
+        except Exception:
+            pass
+            
+        if np.sum(car_mask) == 0:
+            cv2.rectangle(car_mask, (int(display_w*0.25), int(display_h*0.35)), (int(display_w*0.75), int(display_h*0.65)), 1, -1)
+            
+        kernel = np.ones((35, 35), np.uint8)
+        clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
+        
+        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, dark_noise_mask = cv2.threshold(gray_img, 35, 255, cv2.THRESH_BINARY)
+        _, bright_glare_mask = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY_INV)
+        valid_tones = cv2.bitwise_and(dark_noise_mask, bright_glare_mask)
+        
+        hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        h_ch, s_ch, v_ch = cv2.split(hsv_img)
+        _, chromatic_mask = cv2.threshold(s_ch, 40, 255, cv2.THRESH_BINARY)
+        
+        paint_filter = cv2.bitwise_and(valid_tones, chromatic_mask)
+        final_calculated_mask = cv2.bitwise_and(clean_paint_mask, paint_filter)
+        if np.sum(final_calculated_mask) == 0:
+            final_calculated_mask = clean_paint_mask
+            
+        mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
+        
+        cnts, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
+        
+        mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
+        b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
+
+    # Общие сквозные расчеты индексов
+    p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
+    ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
+    predicted_crf = predict_crf_by_function(ivk_value)
+    
+    base_premium_monthly = float(base_premium_annual / 12.0)
+    val_annual = float(base_premium_annual * predicted_crf)
+    val_monthly = float(val_annual / 12.0)
+    get_d_annual = float(val_annual - base_premium_annual)
+    get_d_monthly = float(val_monthly - base_premium_monthly)
+    
+    db_res = simulate_database_lookup(ivk_value, db_tolerance)
+
+    # -----------------------------------------------------------------------
+    # ИНТЕРФЕЙСНАЯ ОТРИСОВКА (РАСПРЕДЕЛЕНИЕ РЕЗУЛЬТАТОВ ПО КОЛОНКАМ)
+    # -----------------------------------------------------------------------
     col_left_img, col_right_data = st.columns([1.1, 0.9])
     
     with col_left_img:
         if analysis_mode == "Ручной маркер (Клик мыши)":
             st.markdown("**🎯 Кликните в любую точку на кузове автомобиля для мгновенного наведения прицела:**")
             
-            # Подготавливаем изображение с наложенным прицелом из текущего состояния сессии
-            cx, cy = st.session_state.click_x, st.session_state.click_y
-            cross_mask = np.zeros((display_h, display_w, 3), dtype=np.uint8)
-            cv2.line(cross_mask, (cx - 22, cy), (cx + 22, cy), (255, 255, 255), 3)
-            cv2.line(cross_mask, (cx, cy - 22), (cx, cy + 22), (255, 255, 255), 3)
-            cv2.circle(cross_mask, (cx, cy), 4, (255, 255, 255), -1)
-            visual_img = cv2.bitwise_xor(img.copy(), cross_mask)
-            
-            # Перехват нового клика по картинке, на которой УЖЕ нарисован прицел
             click_data = streamlit_image_coordinates(
                 cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB),
                 key="img_coordinates",
                 width=display_w
             )
             
-            # Если пользователь сделал новый клик, обновляем координаты в сессии и перезапускаем расчет
             if click_data is not None:
                 new_cx = int(click_data["x"])
                 new_cy = int(click_data["y"])
-                if new_cx != st.session_state.click_x or new_cy != st.session_state.click_y:
-                    st.session_state.click_x = new_cx
-                    st.session_state.click_y = new_cy
-                    st.rerun()
-            
-            # Замер цвета кузова в выбранной точке
-            color_mask = np.zeros((display_h, display_w), dtype=np.uint8)
-            cv2.circle(color_mask, (st.session_state.click_x, st.session_state.click_y), 8, 255, -1)
-            mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=color_mask)
-            b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
-            
-        else:
-            st.markdown("**🤖 ИИ изолирует лакокрасочное покрытие кузова (без стекол и колес):**")
-            
-            car_mask = np.zeros((display_h, display_w), dtype=np.uint8)
-            try:
-                from ultralytics import YOLO
-                model = YOLO("yolov8n-seg.pt")
-                results = model(img, verbose=False)
-                for result in results:
-                    if result.masks is not None:
-                        for mask, cls in zip(result.masks.data, result.boxes.cls):
-                            c_id = int(cls)
-                            if (c_id == 2 or c_id == 5 or c_id == 7):
-                                m_np = cv2.resize(mask.cpu().numpy(), (display_w, display_h))
-                                car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
-            except Exception:
-                pass
-                
-            if np.sum(car_mask) == 0:
-                cv2.rectangle(car_mask, (int(display_w*0.25), int(display_h*0.35)), (int(display_w*0.75), int(display_h*0.65)), 1, -1)
-                
-            kernel = np.ones((35, 35), np.uint8)
-            clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
-            
-            gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            _, dark_noise_mask = cv2.threshold(gray_img, 35, 255, cv2.THRESH_BINARY)
-            _, bright_glare_mask = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY_INV)
-            valid_tones = cv2.bitwise_and(dark_noise_mask, bright_glare_mask)
-            
-            hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-            h_ch, s_ch, v_ch = cv2.split(hsv_img)
-            _, chromatic_mask = cv2.threshold(s_ch, 40, 255, cv2.THRESH_BINARY)
-            
-            paint_filter = cv2.bitwise_and(valid_tones, chromatic_mask)
-            final_calculated_mask = cv2.bitwise_and(clean_paint_mask, paint_filter)
-            if np.sum(final_calculated_mask) == 0:
-                final_calculated_mask = clean_paint_mask
-                
-            mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
-            
-            cnts, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-            
-            mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
-            b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
-            
-            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Автоматическая зона сканирования ИИ", width=display_w)
-            
-        # Вывод точной цветовой плашки под картинкой
