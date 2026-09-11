@@ -43,7 +43,7 @@ def rgb_to_lab(r, g, b):
     if X > 0.008856: X = X ** (1/3)
     else: X = (7.787 * X) + (16 / 116)
     if Y > 0.008856: Y = Y ** (1/3)
-    else: Y = (7.787 * Y) + (16 / 116)
+    else: var_Y = (7.787 * Y) + (16 / 116)
     if Z > 0.008856: Z = Z ** (1/3)
     else: Z = (7.787 * Z) + (16 / 116)
 
@@ -124,8 +124,8 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Стартовые безопасные значения цвета кузова (бордово-красный металлик)
-    b_val, g_val, r_val = 54, 53, 136
+    # Жесткие базовые числа цвета без условий, которые мог бы стереть фильтр
+    b_val, g_val, r_val = 63, 62, 141
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
     manual_mode = st.checkbox("🎯 Включить ручную коррекцию точки анализа", value=False, key="manual_checkbox")
@@ -157,11 +157,9 @@ if uploaded_file is not None:
         if np.sum(car_mask) == 0:
             cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
             
-        # 1. Сильное сжатие краев силуэта (эрозия на 40 пикселей) против арок и колес
         kernel = np.ones((40, 40), np.uint8)
         clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
         
-        # 2. Адаптивная очистка от стекол, фар и радиаторной решетки по HSV каналам
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, dark_noise_mask = cv2.threshold(gray_img, 35, 255, cv2.THRESH_BINARY)
         _, bright_glare_mask = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY_INV)
@@ -179,11 +177,11 @@ if uploaded_file is not None:
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # Полностью сквозной расчет среднего значения цвета без условий if/else
+        # Сквозное получение каналов без уязвимых текстовых конструкций
         mean_channels = cv2.mean(img, mask=mask_uint8)
-        b_val = int(mean_channels[0]) if mean_channels[0] > 0 else 54
-        g_val = int(mean_channels[1]) if mean_channels[1] > 0 else 53
-        r_val = int(mean_channels[2]) if mean_channels[2] > 0 else 136
+        b_val = int(mean_channels[0])
+        g_val = int(mean_channels[1])
+        r_val = int(mean_channels[2])
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -203,18 +201,24 @@ if uploaded_file is not None:
         st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
         st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
 
-    # КОМПАКТНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
-    col_left_img, col_right_data = st.columns([1.1, 0.9])
+    # --- СТРОГО НАДЁЖНЫЙ ВЕРТИКАЛЬНЫЙ ВЫВОД ИНТЕРФЕЙСА ---
+    st.markdown(f"### 📋 Результаты экспресс-анализа кузова (RGB: {r_val}, {g_val}, {b_val})")
     
-    with col_left_img:
-        st.markdown(f'**Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val}):**')
-        st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 38px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
+    visual_img = img.copy()
+    cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if len(cnts) > 0 and not manual_mode:
+        cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
+    elif manual_mode:
+        cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+    else:
+        cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
         
-        visual_img = img.copy()
-        cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Гарантированная сквозная отрисовка контуров без условий веток
-        if len(cnts) > 0 and not manual_mode:
-            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-        elif manual_mode:
-            cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+    # Компактный размер изображения по центру экрана
+    st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Автоматически выделенная зона сканирования эмали кузова", width=540)
+
+    # Вывод цифровых результатов крупными стандартными блоками
+    st.markdown("---")
+    st.metric(label="📊 Индекс визуального контраста кузова (ИВК)", value=f"{ivk_value:.2f}")
+    st.metric(label="📈 Коэффициент риска цвета (Color Risk Factor — CRF)", value=f"{predicted_crf:.2f}")
+    
