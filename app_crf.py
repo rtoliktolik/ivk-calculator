@@ -124,7 +124,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Дефолтные резервные значения
+    # Дефолтные резервные значения цвета (глубокий синий)
     b_val, g_val, r_val = 180, 80, 30
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
@@ -133,7 +133,7 @@ if uploaded_file is not None:
     if manual_mode:
         st.markdown("**Координаты точки прицела:**")
         cx = st.slider("По горизонтали (X)", 0, w, int(w * 0.34), step=2, key="slider_cx")
-        cy = st.slider("По vertical (Y)", 0, h, int(h * 0.48), step=2, key="slider_cy")
+        cy = st.slider("По вертикали (Y)", 0, h, int(h * 0.48), step=2, key="slider_cy")
         final_calculated_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
         b_raw, g_raw, r_raw = img[cy, cx]
         b_val, g_val, r_val = int(b_raw), int(g_raw), int(r_raw)
@@ -156,34 +156,30 @@ if uploaded_file is not None:
         if np.sum(car_mask) == 0:
             cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
             
-        # 1. Сжатие краев силуэта (эрозия) против арок и колес
+        # 1. Сильное сжатие краев силуэта (эрозия) против арок и колес
         kernel = np.ones((35, 35), np.uint8)
         clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
         
-        # 2. ФИЛЬТРАЦИЯ СТЁКОЛ, ФАР И РЕШЕТОК ПО ХРОМАТИЧЕСКОЙ НАСЫЩЕННОСТИ (HSV)
+        # 2. Фильтрация стекол, фар и решеток по насыщенности (HSV)
         hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         h_channel, s_channel, v_channel = cv2.split(hsv_img)
         
-        # Отсекаем серые/черные/белые элементы (стекла, фары, хром имеют Saturation близкий к 0)
         _, chromatic_mask = cv2.threshold(s_channel, 55, 255, cv2.THRESH_BINARY)
-        
-        # Исключаем глубокие темные тени и радиаторную решетку по яркости (Value)
         _, bright_mask = cv2.threshold(v_channel, 45, 255, cv2.THRESH_BINARY)
         
-        # Объединяем фильтры
         valid_paint_filter = cv2.bitwise_and(chromatic_mask, bright_mask)
         final_calculated_mask = cv2.bitwise_and(clean_paint_mask, valid_paint_filter)
         
-        # Если фильтр оказался слишком жестким, возвращаем базовую чистую маску кузова
         if np.sum(final_calculated_mask) == 0:
             final_calculated_mask = clean_paint_mask
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         mean_bgr = cv2.mean(img, mask=mask_uint8)
         
-        b_val = int(mean_bgr) if mean_bgr > 0 else 180
-        g_val = int(mean_bgr) if mean_bgr > 0 else 80
-        r_val = int(mean_bgr) if mean_bgr > 0 else 30
+        # Исправлено: безопасное поиндексное извлечение каналов BGR из кортежа cv2.mean
+        b_val = int(mean_bgr[0]) if mean_bgr[0] > 0 else 180
+        g_val = int(mean_bgr[1]) if mean_bgr[1] > 0 else 80
+        r_val = int(mean_bgr[2]) if mean_bgr[2] > 0 else 30
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -203,7 +199,7 @@ if uploaded_file is not None:
         st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
         st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
 
-    # ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
+    # СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
@@ -220,3 +216,6 @@ if uploaded_file is not None:
             else:
                 cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
             
+        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона сканирования лакокрасочного покрытия", use_container_width=True)
+
+    with col_right_data:
