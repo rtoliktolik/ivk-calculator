@@ -106,7 +106,7 @@ st.sidebar.header("💰 Страховой профиль")
 currency_symbol = st.sidebar.selectbox("Выберите валюту:", ["\u20ac", "$", "\u00a3", "\u00a5", "руб."])
 base_premium_annual = st.sidebar.number_input(label=f"Базовая годовая премия ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# Автоматический режим теперь жестко стоит первым по умолчанию
+# Автоматический режим жестко стоит первым по умолчанию
 st.sidebar.markdown("---")
 st.sidebar.header("🕹️ Управление замером")
 analysis_mode = st.sidebar.radio(
@@ -126,14 +126,15 @@ if uploaded_file is not None:
     img_raw = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     raw_h, raw_w, _ = img_raw.shape
     
-    # Фиксированная ширина для вёрстки
+    # Оптимизация размера под вёрстку экрана
     display_w = 520
     display_h = int((display_w / raw_w) * raw_h)
     img = cv2.resize(img_raw, (display_w, display_h))
     
-    # Безопасная стартовая точка по умолчанию на ЛКП капота (X=35%, Y=55%)
-    cx = int(display_w * 0.35)
-    cy = int(display_h * 0.55)
+    # Инициализация переменных сессии для хранения координат клика
+    if "click_x" not in st.session_state or "click_y" not in st.session_state:
+        st.session_state.click_x = int(display_w * 0.35)
+        st.session_state.click_y = int(display_h * 0.60)
     
     b_val, g_val, r_val = 54, 53, 136
     visual_img = img.copy()
@@ -145,35 +146,35 @@ if uploaded_file is not None:
         if analysis_mode == "Ручной маркер (Клик мыши)":
             st.markdown("**🎯 Кликните в любую точку на кузове автомобиля для мгновенного наведения прицела:**")
             
-            # 1. Сначала подготавливаем подложку с прицелом по умолчанию
+            # Подготавливаем изображение с наложенным прицелом из текущего состояния сессии
+            cx, cy = st.session_state.click_x, st.session_state.click_y
             cross_mask = np.zeros((display_h, display_w, 3), dtype=np.uint8)
-            
-            # Запрашиваем координаты клика у пользователя
-            click_data = streamlit_image_coordinates(
-                cv2.cvtColor(img, cv2.COLOR_BGR2RGB),
-                key="img_coordinates",
-                width=display_w
-            )
-            
-            # ЖЕСТКАЯ ЗАЩИТА ОТ КРАХА: Извлекаем ключи только если клик физически произошел
-            if click_data is not None:
-                cx = int(click_data["x"])
-                cy = int(click_data["y"])
-            
-            # Наносим бирюзовый инверсный маркер (XOR) в актуальную точку
             cv2.line(cross_mask, (cx - 22, cy), (cx + 22, cy), (255, 255, 255), 3)
             cv2.line(cross_mask, (cx, cy - 22), (cx, cy + 22), (255, 255, 255), 3)
             cv2.circle(cross_mask, (cx, cy), 4, (255, 255, 255), -1)
             visual_img = cv2.bitwise_xor(img.copy(), cross_mask)
             
-            # Собираем цвет кузова вокруг маркера
+            # Перехват нового клика по картинке, на которой УЖЕ нарисован прицел
+            click_data = streamlit_image_coordinates(
+                cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB),
+                key="img_coordinates",
+                width=display_w
+            )
+            
+            # Если пользователь сделал новый клик, обновляем координаты в сессии и перезапускаем расчет
+            if click_data is not None:
+                new_cx = int(click_data["x"])
+                new_cy = int(click_data["y"])
+                if new_cx != st.session_state.click_x or new_cy != st.session_state.click_y:
+                    st.session_state.click_x = new_cx
+                    st.session_state.click_y = new_cy
+                    st.rerun()
+            
+            # Замер цвета кузова в выбранной точке
             color_mask = np.zeros((display_h, display_w), dtype=np.uint8)
-            cv2.circle(color_mask, (cx, cy), 8, 255, -1)
+            cv2.circle(color_mask, (st.session_state.click_x, st.session_state.click_y), 8, 255, -1)
             mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=color_mask)
             b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
-            
-            # Перерисовываем холст Streamlit с обновленным прицелом
-            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Интерактивная координатная инспекция эмали", width=display_w)
             
         else:
             st.markdown("**🤖 ИИ изолирует лакокрасочное покрытие кузова (без стекол и колес):**")
@@ -224,5 +225,3 @@ if uploaded_file is not None:
             st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Автоматическая зона сканирования ИИ", width=display_w)
             
         # Вывод точной цветовой плашки под картинкой
-        color_patch_bgr = np.full((38, display_w, 3), (b_val, g_val, r_val), dtype=np.uint8)
-        color_patch_rgb = cv2.cvtColor(color_patch_bgr, cv2.COLOR_BGR2RGB)
