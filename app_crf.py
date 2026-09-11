@@ -60,6 +60,7 @@ def create_checkerboard_pattern(width, height, square_size=15):
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
+# Inject Custom CSS to increase metric font sizes for uniform view
 st.markdown("""
     <style>
     [data-testid="stMetricValue"] { font-size: 3.5rem !important; font-weight: bold !important; }
@@ -131,6 +132,7 @@ if uploaded_file is not None:
                     
                     car_pixels_bgr = img[clean_paint_mask == 1]
                     if len(car_pixels_bgr) > 0:
+                        h_idx, w_idx = np.where(clean_paint_mask == 1)
                         final_calculated_mask[clean_paint_mask == 1] = 1
                         dominant_bgr = np.median(car_pixels_bgr, axis=0)
                 else:
@@ -176,6 +178,7 @@ if uploaded_file is not None:
             
             st.subheader("📊 Express Analysis Results")
             
+            # 🎯 ТЕПЕРЬ ТУТ КОРРЕКТНОЕ НАЗВАНИЕ: Color Risk Factor (CRF)
             st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
             st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
             
