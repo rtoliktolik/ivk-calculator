@@ -116,16 +116,21 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # 1. Постоянная инициализация бегунков для интерактивного наведения в реальном времени
+    # ИСПРАВЛЕНО: Бегунки теперь работают в жесткой процентной шкале (от 0% до 100%)
+    # Это полностью решает проблему координатного сдвига из-за разницы разрешений
     with st.expander("🎛️ Панель тонкой настройки положения маркера сканирования эмали", expanded=True):
-        cx = st.slider("Смещение маркера по горизонтали (X)", 0, w, int(w * 0.42), step=2)
-        cy = st.slider("Смещение маркера по вертикали (Y)", 0, h, int(h * 0.50), step=2)
+        pct_x = st.slider("Смещение маркера по горизонтали (X в %)", 0, 100, 52, step=1)
+        pct_y = st.slider("Смещение маркера по вертикали (Y в %)", 0, 100, 68, step=1)
+        
+    # Математический пересчет процентов ползунков в реальные пиксели фотографии кузова
+    cx = int((pct_x / 100.0) * w)
+    cy = int((pct_y / 100.0) * h)
     
-    # 2. Автоматическая ИИ-сегментация кузова
+    # Автоматическая ИИ-сегментация кузова автомобиля
     car_mask = np.zeros((h, w), dtype=np.uint8)
     try:
         from ultralytics import YOLO
-        model = load_yolo_model() if 'load_yolo_model' in globals() else YOLO("yolov8n-seg.pt")
+        model = YOLO("yolov8n-seg.pt")
         results = model(img, verbose=False)
         for result in results:
             if result.masks is not None:
@@ -162,14 +167,14 @@ if uploaded_file is not None:
         
     mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
     
-    # 3. ГИБРИДНЫЙ ВЫБОР ЦВЕТА: Строим локальное окно 30х30 пикселей вокруг маркера бегунков
+    # ГИБРИДНЫЙ ВЫБОР ЦВЕТА: Извлекаем область вокруг прицела бегунков
     local_target_mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.circle(local_target_mask, (cx, cy), 15, 255, -1)
+    cv2.circle(local_target_mask, (cx, cy), 20, 255, -1)
     
     # Скрещиваем маску бегунков и чистую маску ИИ кузова автомобиля
     hybrid_scan_mask = cv2.bitwise_and(mask_uint8, local_target_mask)
     if np.sum(hybrid_scan_mask) == 0:
-        hybrid_scan_mask = mask_uint8 # Если маркер увели за пределы кузова, берем чистую ИИ маску
+        hybrid_scan_mask = mask_uint8
         
     # Извлечение средних каналов BGR кузова автомобиля
     mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=hybrid_scan_mask)
@@ -209,14 +214,12 @@ if uploaded_file is not None:
         cnts, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
         
-        # Отрисовываем синий перекрестный маркер прицела по координатам ползунков
-        cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 30, 2)
+        # ИСПРАВЛЕНО: Теперь синий перекрестный маркер прицела имеет жирные линии,
+        # чтобы его было отчетливо видно на бордовом капоте при любом масштабе
+        cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 45, 4)
             
         st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона сканирования лакокрасочного покрытия", width=520)
 
     with col_right_data:
         st.markdown("### 📊 Результаты экспресс-анализа")
-        
-        st.metric(label="Индекс визуального контраста (ИВК)", value=f"{ivk_value:.2f}")
-        st.metric(label="Фактор риска цвета (CRF)", value=f"{predicted_crf:.2f}")
         
