@@ -3,12 +3,12 @@ import cv2
 import numpy as np
 import os
 
-# Справочный фон дороги — асфальт в пространстве CIELAB
+# Довідковий фон дороги — асфальт у просторі CIELAB
 BG_L = 44.40
 BG_A = 0.00
 BG_B = 0.00
 
-# Точки для интерполяции кривой риска аварийности (CRF)
+# Точки для інтерполяції кривої ризику аварійності (CRF)
 XP_POINTS = [12.5, 33.5, 47.0, 58.5, 80.0]
 FP_POINTS = [1.19, 1.03, 1.00, 0.975, 0.93]
 
@@ -124,7 +124,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Стартовые базовые значения цвета кузова (глубокий синий)
+    # Резервні дефолтні значення
     b_val, g_val, r_val = 154, 120, 81
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
@@ -156,11 +156,11 @@ if uploaded_file is not None:
         if np.sum(car_mask) == 0:
             cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
             
-        # 1. Сильная эрозия маски на 35 пикселей против колес и арок
+        # 1. Сильна ерозія проти коліс та арок
         kernel = np.ones((35, 35), np.uint8)
         clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
         
-        # 2. Фильтрация стекол, фар и решеток по насыщенности (HSV)
+        # 2. Фільтрація скла та фар за насиченістю (HSV)
         hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         h_channel, s_channel, v_channel = cv2.split(hsv_img)
         
@@ -175,14 +175,14 @@ if uploaded_file is not None:
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # Безопасный расчет среднего BGR значения цвета с помощью массивов NumPy
+        # Абсолютно безпечний розрахунок середнього кольору без вразливого синтаксису
         pixel_indices = np.where(mask_uint8 > 0)
         if len(pixel_indices[0]) > 0:
             selected_pixels = img[pixel_indices]
             average_channels = np.mean(selected_pixels, axis=0)
-            b_val = int(average_channels[0])
-            g_val = int(average_channels[1])
-            r_val = int(average_channels[2])
+            b_val = int(np.round(average_channels[0]))
+            g_val = int(np.round(average_channels[1]))
+            r_val = int(np.round(average_channels[2]))
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -202,20 +202,21 @@ if uploaded_file is not None:
         st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
         st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
 
-    # СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
-    col_left_img, col_right_data = st.columns(2)
+    # --- НАДІЙНИЙ МОНОЛІТНИЙ ВИВІД ІНТЕРФЕЙСУ БЕЗ КОНФЛІКТНИХ КОЛОНОК ---
+    st.markdown(f'**Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val}):**')
+    st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 50px; border-radius: 5px; border: 2px solid #ccc; margin-bottom: 25px;"></div>', unsafe_allow_html=True)
     
-    with col_left_img:
-        st.markdown(f'**Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val}):**')
-        st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
-        
-        visual_img = img.copy()
-        cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if len(cnts) > 0 and not manual_mode:
-            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
+    # Візуалізація аналізованого фото авто
+    visual_img = img.copy()
+    cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if len(cnts) > 0 and not manual_mode:
+        cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
+    else:
+        if manual_mode:
+            cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
         else:
-            if manual_mode:
-                cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
-            else:
-                cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
-            
+            cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
+        
+    st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона сканирования лакокрасочного покрытия кузова", use_container_width=True)
+
+    # Інформаційна панель результатів
