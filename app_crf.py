@@ -96,13 +96,6 @@ def create_checkerboard_pattern(width, height, square_size=15):
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FARRATE-X | Калькулятор ИВК")
 
-st.markdown("""
-    <style>
-    [data-testid="stMetricValue"] { font-size: 2.2rem !important; font-weight: bold !important; color: #1E3A8A !important; }
-    [data-testid="stMetricLabel"] { font-size: 1.0rem !important; font-weight: 500 !important; }
-    </style>
-""", unsafe_allow_html=True)
-
 logo_path = "logo.png"
 if os.path.exists(logo_path):
     st.image(logo_path, width=260)
@@ -131,7 +124,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Резервные дефолтные значения цвета кузова (синий металлик)
+    # Дефолтные резервные значения
     b_val, g_val, r_val = 180, 80, 30
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
@@ -140,7 +133,7 @@ if uploaded_file is not None:
     if manual_mode:
         st.markdown("**Координаты точки прицела:**")
         cx = st.slider("По горизонтали (X)", 0, w, int(w * 0.34), step=2, key="slider_cx")
-        cy = st.slider("По вертикали (Y)", 0, h, int(h * 0.48), step=2, key="slider_cy")
+        cy = st.slider("По vertical (Y)", 0, h, int(h * 0.48), step=2, key="slider_cy")
         final_calculated_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
         b_raw, g_raw, r_raw = img[cy, cx]
         b_val, g_val, r_val = int(b_raw), int(g_raw), int(r_raw)
@@ -163,23 +156,34 @@ if uploaded_file is not None:
         if np.sum(car_mask) == 0:
             cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
             
-        # Сильная эрозия маски на 35 пикселей, чтобы гарантированно убрать арки и колеса
+        # 1. Сжатие краев силуэта (эрозия) против арок и колес
         kernel = np.ones((35, 35), np.uint8)
         clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
-        final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
         
+        # 2. ФИЛЬТРАЦИЯ СТЁКОЛ, ФАР И РЕШЕТОК ПО ХРОМАТИЧЕСКОЙ НАСЫЩЕННОСТИ (HSV)
+        hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        h_channel, s_channel, v_channel = cv2.split(hsv_img)
+        
+        # Отсекаем серые/черные/белые элементы (стекла, фары, хром имеют Saturation близкий к 0)
+        _, chromatic_mask = cv2.threshold(s_channel, 55, 255, cv2.THRESH_BINARY)
+        
+        # Исключаем глубокие темные тени и радиаторную решетку по яркости (Value)
+        _, bright_mask = cv2.threshold(v_channel, 45, 255, cv2.THRESH_BINARY)
+        
+        # Объединяем фильтры
+        valid_paint_filter = cv2.bitwise_and(chromatic_mask, bright_mask)
+        final_calculated_mask = cv2.bitwise_and(clean_paint_mask, valid_paint_filter)
+        
+        # Если фильтр оказался слишком жестким, возвращаем базовую чистую маску кузова
+        if np.sum(final_calculated_mask) == 0:
+            final_calculated_mask = clean_paint_mask
+            
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
+        mean_bgr = cv2.mean(img, mask=mask_uint8)
         
-        # Фильтрация темных шумов (подкрылки, резина, глубокие тени)
-        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, bright_pixels_mask = cv2.threshold(gray_img, 45, 255, cv2.THRESH_BINARY)
-        strict_paint_mask = cv2.bitwise_and(mask_uint8, bright_pixels_mask)
-        
-        # Стабильное извлечение цвета без логических условий if/else
-        mean_bgr = cv2.mean(img, mask=strict_paint_mask)
-        b_val = int(mean_bgr[0]) if mean_bgr[0] > 0 else 180
-        g_val = int(mean_bgr[1]) if mean_bgr[1] > 0 else 80
-        r_val = int(mean_bgr[2]) if mean_bgr[2] > 0 else 30
+        b_val = int(mean_bgr) if mean_bgr > 0 else 180
+        g_val = int(mean_bgr) if mean_bgr > 0 else 80
+        r_val = int(mean_bgr) if mean_bgr > 0 else 30
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -199,7 +203,7 @@ if uploaded_file is not None:
         st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
         st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
 
-    # СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
+    # ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
@@ -209,11 +213,10 @@ if uploaded_file is not None:
         visual_img = img.copy()
         cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if len(cnts) > 0 and not manual_mode:
-            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
+            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
         else:
             if manual_mode:
                 cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
             else:
                 cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
             
-        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона сканирования лакокрасочного покрытия", use_container_width=True)
