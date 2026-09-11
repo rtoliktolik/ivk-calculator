@@ -4,6 +4,15 @@ import numpy as np
 import os
 from streamlit_image_coordinates import streamlit_image_coordinates
 
+# Кэширование модели ИИ, чтобы избежать зависаний при кликах
+@st.cache_resource
+def load_yolo_model():
+    try:
+        from ultralytics import YOLO
+        return YOLO("./yolov8n-seg.pt")
+    except Exception:
+        return None
+
 # Справочный фон дороги — асфальт в пространстве CIELAB
 BG_L = 44.40
 BG_A = 0.00
@@ -126,7 +135,6 @@ if uploaded_file is not None:
     img_raw = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     raw_h, raw_w, _ = img_raw.shape
     
-    # Оптимизация размера под вёрстку экрана
     display_w = 520
     display_h = int((display_w / raw_w) * raw_h)
     img = cv2.resize(img_raw, (display_w, display_h))
@@ -140,7 +148,7 @@ if uploaded_file is not None:
     visual_img = img.copy()
     
     # -----------------------------------------------------------------------
-    # МАТЕМАТИЧЕСКОЕ ЯДРО ВЫЧИСЛЕНИЙ (ВЫНЕСЕНО ВВЕРХ ДО ОТРИСОВКИ КОЛОНОК)
+    # МАТЕМАТИЧЕСКОЕ ЯДРО ВЫЧИСЛЕНИЙ (ИЗОЛИРОВАННЫЕ ВЕТКИ РЕЖИМОВ)
     # -----------------------------------------------------------------------
     if analysis_mode == "Ручной маркер (Клик мыши)":
         cx, cy = st.session_state.click_x, st.session_state.click_y
@@ -158,21 +166,22 @@ if uploaded_file is not None:
         mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=color_mask)
         b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
     else:
-        # Автоматический режим ИИ (Использует загруженный локальный файл весов)
+        # Автоматический режим ИИ (Вызывается только если выбран в меню)
         car_mask = np.zeros((display_h, display_w), dtype=np.uint8)
-        try:
-            from ultralytics import YOLO
-            model = YOLO("./yolov8n-seg.pt")
-            results = model(img, verbose=False)
-            for result in results:
-                if result.masks is not None:
-                    for mask, cls in zip(result.masks.data, result.boxes.cls):
-                        c_id = int(cls)
-                        if (c_id == 2 or c_id == 5 or c_id == 7):
-                            m_np = cv2.resize(mask.cpu().numpy(), (display_w, display_h))
-                            car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
-        except Exception:
-            pass
+        model = load_yolo_model()
+        
+        if model is not None:
+            try:
+                results = model(img, verbose=False)
+                for result in results:
+                    if result.masks is not None:
+                        for mask, cls in zip(result.masks.data, result.boxes.cls):
+                            c_id = int(cls)
+                            if (c_id == 2 or c_id == 5 or c_id == 7):
+                                m_np = cv2.resize(mask.cpu().numpy(), (display_w, display_h))
+                                car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
+            except Exception:
+                pass
             
         if np.sum(car_mask) == 0:
             cv2.rectangle(car_mask, (int(display_w*0.25), int(display_h*0.35)), (int(display_w*0.75), int(display_h*0.65)), 1, -1)
@@ -225,8 +234,3 @@ if uploaded_file is not None:
             st.markdown("**🎯 Кликните в любую точку на кузове автомобиля для мгновенного наведения прицела:**")
             
             # Интерактивный захват координат клика мыши
-            click_data = streamlit_image_coordinates(
-                cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB),
-                key="img_coordinates",
-                width=display_w
-            )
