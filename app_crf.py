@@ -2,6 +2,7 @@ import streamlit as st
 import cv2
 import numpy as np
 import os
+from streamlit_image_coordinates import streamlit_image_coordinates
 
 # Справочный фон дороги — асфальт в пространстве CIELAB
 BG_L = 44.40
@@ -84,26 +85,9 @@ def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
     return {"total_cars": total_cars_in_cloud, "groups": matched_groups}
 
 # ---------------------------------------------------------------------------
-# Веб-интерфейс конфигурация и CSS стили для вертикального слайдера
+# Настройка веб-интерфейса
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FARRATE-X | Калькулятор ИВК")
-
-# Инжектим CSS, чтобы развернуть ползунок оси Y вертикально
-st.markdown("""
-    <style>
-    .vertical-slider div[data-testid="stSlider"] {
-        transform: rotate(270deg);
-        transform-origin: center;
-        margin-top: 130px;
-        margin-left: -50px;
-        width: 320px !important;
-    }
-    .vertical-slider div[data-testid="stSlider"] label {
-        transform: rotate(90deg);
-        margin-bottom: -15px;
-    }
-    </style>
-""", unsafe_allow_html=True)
 
 logo_path = "logo.png"
 if os.path.exists(logo_path):
@@ -130,78 +114,75 @@ uploaded_file = st.file_uploader("Шаг 1 — Загрузите фото ав�
 
 if uploaded_file is not None:
     file_bytes = np.frombuffer(uploaded_file.getvalue(), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-    h, w, _ = img.shape
-
-    # ГЛАВНЫЙ КОМПАКТНЫЙ МАКЕТ
-    col_left_layout, col_right_data = st.columns([1.2, 0.8])
+    img_raw = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    raw_h, raw_w, _ = img_raw.shape
     
-    with col_left_layout:
-        st.markdown(f"### 📋 Результаты экспресс-анализа кузова")
+    # Чтобы клики мышкой обрабатывались мгновенно без зависаний, 
+    # оптимизируем базовое изображение до фиксированной ширины в 520 пикселей
+    display_w = 520
+    display_h = int((display_w / raw_w) * raw_h)
+    img = cv2.resize(img_raw, (display_w, display_h))
+    
+    st.markdown("**🎯 Кликните мышкой в любую точку на кузове автомобиля для мгновенного замера цвета:**")
+    
+    # КОМПАКТНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
+    col_left_img, col_right_data = st.columns([1.1, 0.9])
+    
+    with col_left_img:
+        visual_img = img.copy()
         
-        # Строим общую сетку для позиционирования слайдеров вокруг фото авто
-        # col_v_slider — вертикальная ось слева, col_img_frame — изображение
-        col_v_slider, col_img_frame = st.columns([0.15, 0.85])
+        # Точка прицела по умолчанию (центр капота/двери)
+        default_cx = int(display_w * 0.45)
+        default_cy = int(display_h * 0.55)
         
-        with col_v_slider:
-            # Оборачиваем в кастомный класс CSS для разворота на 270 градусов
-            st.markdown('<div class="vertical-slider">', unsafe_allow_html=True)
-            # В вертикальном слайдере инвертируем шаг: 100 вверху, 0 внизу
-            pct_y = st.slider("Ось Y (%)", 0, 100, 48, step=1, label_visibility="collapsed")
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-        with col_img_frame:
-            # Математический пересчет инвертированных процентов Y и процентов X в пиксели фото
-            # Так как слайдер Streamlit идет снизу вверх, вычитаем значение из 100
-            real_pct_y = 100 - pct_y
-            
-            # Маска для выбора цвета
-            final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
-            
-            # Отрисовываем адаптивный прицел методом инверсии цвета (XOR)
-            visual_img = img.copy()
-            
-            # Временный слой для маски перекрестия прицела
-            cross_mask = np.zeros((h, w, 3), dtype=np.uint8)
-            
-            # Будет вызвано динамически после рендеринга горизонтального слайдера ниже
-            # Создаем контейнер-заглушку для картинки, чтобы слайдер встал строго под ней
-            img_placeholder = st.empty()
-            
-        # Горизонтальный слайдер располагается строго под картинкой
-        pct_x = st.slider("Ось X (%) — Перемещение прицела по ширине кузова", 0, 100, 33, step=1)
+        # Создаем слой инверсии цвета перекрестия (XOR маска)
+        cross_mask = np.zeros((display_h, display_w, 3), dtype=np.uint8)
         
-        # Рассчитываем точные координаты пикселей
-        cx = int((pct_x / 100.0) * w)
-        cy = int((real_pct_y / 100.0) * h)
+        # Отрисовка инверсного прицела по умолчанию на маске
+        cv2.line(cross_mask, (default_cx - 25, default_cy), (default_cx + 25, default_cy), (255, 255, 255), 3)
+        cv2.line(cross_mask, (default_cx, default_cy - 25), (default_cx, default_cy + 25), (255, 255, 255), 3)
+        cv2.circle(cross_mask, (default_cx, default_cy), 4, (255, 255, 255), -1)
         
-        # Заполняем маску сбора цвета
-        cv2.circle(final_calculated_mask, (cx, cy), 15, 255, -1)
+        # Собираем картинку с дефолтным прицелом
+        default_visual = cv2.bitwise_xor(visual_img, cross_mask)
+        
+        # ВЫЗОВ ИНТЕРАКТИВНОГО КОМПОНЕНТА КЛИКОВ МЫШКОЙ БЕЗ СЛАЙДЕРОВ
+        # Компонент выводит картинку и мгновенно перехватывает точные координаты клика пользователя
+        value = streamlit_image_coordinates(
+            cv2.cvtColor(default_visual, cv2.COLOR_BGR2RGB),
+            key="img_coordinates",
+            width=display_w
+        )
+        
+        # Если пользователь кликнул по фото, пересчитываем координаты под точку клика
+        cx, cy = default_cx, default_cy
+        if value is not None:
+            cx = int(value["x"])
+            cy = int(value["y"])
+            
+            # Обновляем прицел под координаты клика на чистом холсте
+            cross_mask_click = np.zeros((display_h, display_w, 3), dtype=np.uint8)
+            cv2.line(cross_mask_click, (cx - 25, cy), (cx + 25, cy), (255, 255, 255), 3)
+            cv2.line(cross_mask_click, (cx, cy - 25), (cx, cy + 25), (cx, cy + 25), 3)
+            cv2.circle(cross_mask_click, (cx, cy), 4, (255, 255, 255), -1)
+            visual_img = cv2.bitwise_xor(img.copy(), cross_mask_click)
+            
+        # Берём область 20х20 пикселей вокруг точки клика для идеального замера цвета кузова
+        final_calculated_mask = np.zeros((display_h, display_w), dtype=np.uint8)
+        cv2.circle(final_calculated_mask, (cx, cy), 10, 255, -1)
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
+        
         mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
         b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
         
-        # Чертим инверсный прицел на слое cross_mask
-        # Две пересекающиеся жирные линии
-        cv2.line(cross_mask, (cx - 40, cy), (cx + 40, cy), (255, 255, 255), 4)
-        cv2.line(cross_mask, (cx, cy - 40), (cx, cy + 40), (255, 255, 255), 4)
-        # Центральный прицельный маркер
-        cv2.circle(cross_mask, (cx, cy), 5, (255, 255, 255), -1)
-        
-        # Накладываем слой прицела методом XOR инверсии на изображение авто
-        visual_img = cv2.bitwise_xor(visual_img, cross_mask)
-        
-        # Отрендериваем собранную картинку и плашку цвета в их законные места
-        with col_img_frame:
-            color_patch_bgr = np.full((38, 440, 3), (b_val, g_val, r_val), dtype=np.uint8)
-            color_patch_rgb = cv2.cvtColor(color_patch_bgr, cv2.COLOR_BGR2RGB)
-            st.image(color_patch_rgb, caption=f"Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
-            img_placeholder.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Интерактивная координатная инспекция эмали", width=440)
+        # Вывод точной цветовой плашки под картинкой
+        color_patch_bgr = np.full((38, display_w, 3), (b_val, g_val, r_val), dtype=np.uint8)
+        color_patch_rgb = cv2.cvtColor(color_patch_bgr, cv2.COLOR_BGR2RGB)
+        st.image(color_patch_rgb, caption=f"Выделенный образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
 
     with col_right_data:
         st.markdown("### 📊 Результаты экспресс-анализа")
         
-        # Расчет индексов
         p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
         ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
         predicted_crf = predict_crf_by_function(ivk_value)
@@ -228,3 +209,5 @@ if uploaded_file is not None:
         with sidebar_calc_space.container():
             st.write("**🧮 Расчет текущей премии**")
             st.write(f"Базовая: {base_premium_annual:.2f} {currency_symbol}/год")
+            st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
+            st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
