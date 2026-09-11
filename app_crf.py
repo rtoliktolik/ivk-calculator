@@ -5,12 +5,12 @@ from ultralytics import YOLO
 import os
 import plotly.graph_objects as go
 
-# Довідковий фон дороги — асфальт у просторі CIELAB
+# Справочный фон дороги — асфальт в пространстве CIELAB
 BG_L = 44.40
 BG_A = 0.00
 BG_B = 0.00
 
-# Точки для інтерполяції кривої ризику аварійності (CRF)
+# Точки для интерполяции кривой риска аварийности (CRF)
 XP_POINTS = [12.5, 33.5, 47.0, 58.5, 80.0]
 FP_POINTS = [1.19, 1.03, 1.00, 0.975, 0.93]
 
@@ -117,7 +117,7 @@ else:
 
 st.markdown("---")
 
-# --- СЕКЦІЯ НАЛАШТУВАНЬ У БІЧНІЙ ПАНЕЛІ ---
+# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -126,10 +126,10 @@ st.sidebar.header("💰 Insurance Profile")
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# Контейнер у бічній панелі для миттєвого виведення розрахунків
+# Контейнер в боковой панели для мгновенного вывода расчетов
 sidebar_calc_space = st.sidebar.empty()
 
-# --- ОСНОВНИЙ КОНТЕНТ ДОДАТКУ ---
+# --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -137,7 +137,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
-    # ОБЧИСЛЕННЯ МАСКИ ТА КОЛЬОРУ КУЗОВА
+    # ВЫЧИСЛЕНИЕ МАСКИ И ЦВЕТА КУЗОВА
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     r_val, g_val, b_val = 128, 128, 128
     
@@ -155,7 +155,7 @@ if uploaded_file is not None:
             model = load_yolo_model()
             results = model(img, verbose=False)
             car_mask = np.zeros((h, w), dtype=np.uint8)
-            VALID_VEHICLE_CLASSES = [2, 5, 7]  # Виправлено: відновлено пропущений список класів YOLO
+            VALID_VEHICLE_CLASSES = [2, 5, 7] # Возвращено на место
             
             for result in results:
                 if result.masks is not None:
@@ -171,7 +171,7 @@ if uploaded_file is not None:
                 
                 mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                 
-                # --- ІНТЕЛЕКТУАЛЬНИЙ ВИБІР ДОМІНАНТНОГО КОЛЬОРУ ЧЕРЕЗ K-MEANS ---
+                # --- ИНТЕЛЛЕКТУАЛЬНЫЙ ВЫБОР ДОМИНАНТНОГО ЦВЕТА ЧЕРЕЗ K-MEANS ---
                 pixels = img[mask_uint8 > 0]
                 
                 if len(pixels) > 0:
@@ -180,13 +180,13 @@ if uploaded_file is not None:
                     k_clusters = 3
                     flags = cv2.KMEANS_RANDOM_CENTERS
                     
-                    # Поділ кузова на 3 колірні групи (Основний колір, відблиски, тіні)
+                    # Разделяем кузов на 3 цветовые группы (Основной цвет, блики, тени)
                     _, labels, centers = cv2.kmeans(pixels_float, k_clusters, None, criteria, 10, flags)
                     
                     labels = labels.flatten()
                     counts = np.bincount(labels)
                     
-                    # Знаходження найбільшого кластера (істинна емаль без пересвітів)
+                    # Находим самый большой кластер (истинная эмаль без пересветов)
                     dominant_cluster_idx = np.argmax(counts)
                     dominant_bgr = centers[dominant_cluster_idx]
                     
@@ -196,7 +196,7 @@ if uploaded_file is not None:
                 else:
                     b_val, g_val, r_val = 128, 128, 128
 
-    # МАТЕМАТИЧНИЙ РОЗРАХУНОК ІНДЕКСІВ ТА ПРЕМІЙ
+    # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
     delta_L = float(abs(p_L - BG_L))
     delta_ab = float(np.linalg.norm(np.array([p_a, p_b]) - np.array([BG_A, BG_B])))
@@ -209,16 +209,18 @@ if uploaded_file is not None:
     get_d_annual = float(val_annual - base_premium_annual)
     get_d_monthly = float(val_monthly - base_premium_monthly)
 
-    # ВІДОБРАЖЕННЯ У БІЧНІЙ ПАНЕЛІ
+    # ОТРИСОВКА В БОКОВОЙ ПАНЕЛИ
     with sidebar_calc_space.container():
         st.write("**🧮 Live Premium Calculation**")
         st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr ({base_premium_monthly:.2f} {currency_symbol}/mo)")
         st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{get_d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
         st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{get_d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
 
-    # БУДУЄМО СБАЛАНСОВАНИЙ ЦЕНТРАЛЬНИЙ ДВОКОЛОНКОВИЙ МАКЕТ
+    # СТРОИМ СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
+        
+        visual_img = img.copy()
