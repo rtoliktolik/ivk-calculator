@@ -105,9 +105,8 @@ st.sidebar.header("💰 Страховой профиль")
 currency_symbol = st.sidebar.selectbox("Выберите валюту:", ["€", "$", "£", "¥", "руб."])
 base_premium_annual = st.sidebar.number_input(label=f"Базовая годовая премия ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# Слайдеры ручной коррекции (Вынесены в боковую панель)
 st.sidebar.markdown("---")
-st.sidebar.header("🎯 Коррекция точки прицела")
+st.sidebar.header("🎯 Режим сканирования")
 manual_mode = st.sidebar.checkbox("Включить ручной прицел", value=False)
 
 # Контейнер в боковой панели для расчетов премии
@@ -121,15 +120,15 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Координаты ручного прицела (Вынесены в основное тело для гарантированного рендеринга)
-    cx = st.slider("Позиция прицела по горизонтали (X)", 0, w, int(w * 0.45), step=2)
-    cy = st.slider("Позиция прицела по вертикали (Y)", 0, h, int(h * 0.52), step=2)
-    
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     visual_img = img.copy()
 
+    # Изолированное и строгое разделение логики режимов
     if manual_mode:
-        # Режим ручной инспекции кузова по маркеру-крестику
+        # 1. РУЧНОЙ РЕЖИМ: Слайдеры появляются только при активации чекбокса
+        cx = st.slider("Позиция прицела по горизонтали (X)", 0, w, int(w * 0.45), step=2)
+        cy = st.slider("Позиция прицела по вертикали (Y)", 0, h, int(h * 0.52), step=2)
+        
         cv2.circle(final_calculated_mask, (cx, cy), 15, 255, -1)
         cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
         
@@ -137,7 +136,7 @@ if uploaded_file is not None:
         mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
         b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
     else:
-        # Автоматический ИИ-режим сегментации лакокрасочного покрытия кузова
+        # 2. АВТОМАТИЧЕСКИЙ РЕЖИМ ИИ
         car_mask = np.zeros((h, w), dtype=np.uint8)
         try:
             from ultralytics import YOLO
@@ -156,19 +155,19 @@ if uploaded_file is not None:
         if np.sum(car_mask) == 0:
             cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
             
-        # Сильная эрозия маски на 40 пикселей для удаления арок и колес
+        # Очистка кузова от колесных арок и резины (эрозия)
         kernel = np.ones((40, 40), np.uint8)
         clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
         
-        # Адаптивный HSV-фильтр против стёкол фар и решеток
+        # Фильтрация стекол и фар по HSV
         gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, dark_noise_mask = cv2.threshold(gray_img, 35, 255, cv2.THRESH_BINARY)
         _, bright_glare_mask = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY_INV)
         valid_tones = cv2.bitwise_and(dark_noise_mask, bright_glare_mask)
         
         hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        h_ch, s_ch, v_ch = cv2.split(hsv_img)
-        _, chromatic_mask = cv2.threshold(s_ch, 40, 255, cv2.THRESH_BINARY)
+        s_channel = hsv_img[:, :, 1]
+        _, chromatic_mask = cv2.threshold(s_channel, 40, 255, cv2.THRESH_BINARY)
         
         paint_filter = cv2.bitwise_and(valid_tones, chromatic_mask)
         final_calculated_mask = cv2.bitwise_and(clean_paint_mask, paint_filter)
@@ -178,7 +177,7 @@ if uploaded_file is not None:
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # Отрисовка сплошных контуров ИИ на кузове
+        # Отрисовка контуров ИИ-детекции кузова
         cnts, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
         
@@ -222,3 +221,7 @@ if uploaded_file is not None:
         st.metric(label="Индекс визуального контраста (ИВК)", value=f"{ivk_value:.2f}")
         st.metric(label="Фактор риска цвета (CRF)", value=f"{predicted_crf:.2f}")
         
+        status_text = "НИЗКИЙ РИСК 👍" if predicted_crf < 1.0 else ("ВЫСОКИЙ РИСК ⚠️" if predicted_crf > 1.0 else "НОРМА")
+        st.info(f"Вердикт анализа: **{status_text}**")
+        
+        db_res = simulate_database_lookup(ivk_value, db_tolerance)
