@@ -131,7 +131,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Резервные дефолтные значения цвета
+    # Резервные дефолтные значения цвета (будут переписаны при успешном анализе)
     r_val, g_val, b_val = 30, 80, 180
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
@@ -188,6 +188,9 @@ if uploaded_file is not None:
             b_val = int(dominant_bgr[0])
             g_val = int(dominant_bgr[1])
             r_val = int(dominant_bgr[2])
+        else:
+            # Заглушка, чтобы ветка else не оставалась пустой
+            b_val, g_val, r_val = 180, 80, 30
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -204,7 +207,7 @@ if uploaded_file is not None:
     with sidebar_calc_space.container():
         st.write("**🧮 Расчет текущей премии**")
         st.write(f"Базовая: {base_premium_annual:.2f} {currency_symbol}/год")
-        st.metric(label="Скорректированная годовая preмия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
+        st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
         st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
 
     # СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
@@ -219,6 +222,3 @@ if uploaded_file is not None:
         if len(cnts) > 0 and not manual_mode:
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
         else:
-            if manual_mode:
-                cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
-            else:
