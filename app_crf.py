@@ -2,7 +2,6 @@ import streamlit as st
 import cv2
 import numpy as np
 import os
-import plotly.express as px
 
 # Справочный фон дороги — асфальт в пространстве CIELAB
 BG_L = 44.40
@@ -81,7 +80,7 @@ db_tolerance = st.sidebar.slider("Радиус допуска облака (± �
 currency_symbol = st.sidebar.selectbox("Выберите валюту:", ["\u20ac", "$", "\u00a3", "\u00a5", "руб."])
 base_premium_annual = st.sidebar.number_input(label="Базовая годовая премия:", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-analysis_mode = st.sidebar.radio("Выберите метод детекции:", ("Автоматический ИИ", "Ручной маркер (Прямой клик мыши)"), index=0)
+analysis_mode = st.sidebar.radio("Выберите метод детекции:", ("Автоматический ИИ", "Ручной маркер (Настройка осей)"), index=0)
 sidebar_calc_space = st.sidebar.empty()
 
 uploaded_file = st.file_uploader("Шаг 1 — Загрузите фото автомобиля", type=["jpg", "jpeg", "png"])
@@ -95,18 +94,22 @@ if uploaded_file is not None:
     display_h = int((display_w / raw_w) * raw_h)
     img = cv2.resize(img_raw, (display_w, display_h))
     
-    # Хранение точных координат клика мыши в сессии
-    if "cx" not in st.session_state or "cy" not in st.session_state:
-        st.session_state.cx = int(display_w * 0.35)
-        st.session_state.cy = int(display_h * 0.55)
-        
     b_val, g_val, r_val = 54, 53, 136
     visual_img = img.copy()
-
-    if analysis_mode == "Ручной маркер (Прямой клик мыши)":
-        cx, cy = st.session_state.cx, st.session_state.cy
+    
+    # 1. Слайдеры осей X и Y в процентной шкале (Вынесены в основное тело)
+    with st.expander("🎛️ Панель управления положением маркера прицела", expanded=(analysis_mode == "Ручной маркер (Настройка осей)")):
+        pct_x = st.slider("Смещение прицела по горизонтали (Ось X в %)", 0, 100, 35, step=1)
+        pct_y = st.slider("Смещение прицела по вертикали (Ось Y в %)", 0, 100, 60, step=1)
         
-        # Накладываем бирюзовый инверсный прицел (XOR-эффект)
+    cx = int((pct_x / 100.0) * display_w)
+    cy = int((pct_y / 100.0) * display_h)
+
+    # -----------------------------------------------------------------------
+    # МАТЕМАТИЧЕСКОЕ ЯДРО ВЫЧИСЛЕНИЙ
+    # -----------------------------------------------------------------------
+    if analysis_mode == "Ручной маркер (Настройка осей)":
+        # Накладываем инвертированный бирюзовый прицел (XOR-эффект)
         cross_mask = np.zeros((display_h, display_w, 3), dtype=np.uint8)
         cv2.line(cross_mask, (cx - 22, cy), (cx + 22, cy), (255, 255, 255), 3)
         cv2.line(cross_mask, (cx, cy - 22), (cx, cy + 22), (255, 255, 255), 3)
@@ -161,41 +164,18 @@ if uploaded_file is not None:
         mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
         b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
 
-    # ОТРИСОВКА ВЕБ-ИНТЕРФЕЙСА КОЛОНОК
+    # -----------------------------------------------------------------------
+    # ИНТЕРФЕЙСНАЯ ОТРИСОВКА КОЛОНОК
+    # -----------------------------------------------------------------------
     col_left_img, col_right_data = st.columns([1.1, 0.9])
     
     with col_left_img:
-        if analysis_mode == "Ручной маркер (Прямой клик мыши)":
-            st.markdown("**🎯 Кликните мышкой в любую точку кузова автомобиля для фиксации прицела:**")
+        # Вывод изображения автомобиля (стабильно работает в обоих режимах)
+        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона лакокрасочного покрытия автомобиля", width=520)
             
-            # Переводим BGR в RGB для корректного Plotly
-            rgb_view = cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB)
-            
-            fig = px.imshow(rgb_view)
-            fig.update_layout(
-                width=display_w, height=display_h,
-                margin=dict(l=0, r=0, t=0, b=0),
-                xaxis=dict(showgrid=False, zeroline=False, visible=False),
-                yaxis=dict(showgrid=False, zeroline=False, visible=False),
-            )
-            
-            # ИСПРАВЛЕНО: Новый строгий перехват структуры клика Plotly в Streamlit 1.26+
-            click_event = st.plotly_chart(fig, config={'displayModeBar': False})
-            
-            if click_event is not None and "points" in click_event:
-                try:
-                    point_data = click_event["points"][0]
-                    new_x = int(point_data["x"])
-                    new_y = int(point_data["y"])
-                    
-                    if new_x != st.session_state.cx or new_y != st.session_state.cy:
-                        st.session_state.cx = new_x
-                        st.session_state.cy = new_y
-                        st.rerun()
-                except Exception:
-                    pass
-        else:
-            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Автоматическая зона сканирования ИИ", width=520)
+        # Интерактивная кнопка-фиксатор под фотографией
+        if analysis_mode == "Ручной маркер (Настройка осей)":
+            st.button("🎯 Зафиксировать и снять замер цвета кузова")
             
         # Вывод точной цветовой плашки под картинкой автомобиля
         color_patch_bgr = np.full((38, display_w, 3), (b_val, g_val, r_val), dtype=np.uint8)
@@ -203,4 +183,5 @@ if uploaded_file is not None:
 
     with col_right_data:
         st.markdown("### 📊 Результаты экспресс-анализа")
+        # Вызов защищенной локальной функции вычислений
         render_analytics_panel(b_val, g_val, r_val, db_tolerance, base_premium_annual, currency_symbol, sidebar_calc_space)
