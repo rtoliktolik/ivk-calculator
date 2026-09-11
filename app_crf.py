@@ -133,8 +133,7 @@ if uploaded_file is not None:
     b_val, g_val, r_val = 54, 53, 136
     visual_img = img.copy()
     
-    # Слайдеры осей инициализируются в основном теле для гарантированной стабильности
-    # Сжаты в аккуратную панель управления, которая раскрыта по умолчанию в ручном режиме
+    # Слайдеры осей (раскрыты по умолчанию в ручном режиме)
     with st.expander("🎛️ Настройка положения прицела инспекции эмали кузова", expanded=(analysis_mode == "Ручной маркер (Ползунки осей)")):
         pct_x = st.slider("Смещение прицела по горизонтали (Ось X в %)", 0, 100, 35, step=1)
         pct_y = st.slider("Смещение прицела по вертикали (Ось Y в %)", 0, 100, 60, step=1)
@@ -143,7 +142,7 @@ if uploaded_file is not None:
     cy = int((pct_y / 100.0) * display_h)
 
     # -----------------------------------------------------------------------
-    # МАТЕМАТИЧЕСКАЕ ЯДРО ВЫЧИСЛЕНИЙ
+    # МАТЕМАТИЧЕСКОЕ ЯДРО ВЫЧИСЛЕНИЙ
     # -----------------------------------------------------------------------
     if analysis_mode == "Ручной маркер (Ползунки осей)":
         # Накладываем инвертированный бирюзовый прицел (XOR-эффект) строго по процентам слайдеров
@@ -153,7 +152,7 @@ if uploaded_file is not None:
         cv2.circle(cross_mask, (cx, cy), 4, (255, 255, 255), -1)
         visual_img = cv2.bitwise_xor(img.copy(), cross_mask)
         
-        # Замер цвета вокруг прицела
+        # Замер цвета кузова строго вокруг прицела
         color_mask = np.zeros((display_h, display_w), dtype=np.uint8)
         cv2.circle(color_mask, (cx, cy), 8, 255, -1)
         mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=color_mask)
@@ -186,6 +185,7 @@ if uploaded_file is not None:
         _, bright_glare_mask = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY_INV)
         valid_tones = cv2.bitwise_and(dark_noise_mask, bright_glare_mask)
         
+        # Безопасное разделение каналов через split, защищенное от вырезания платформой
         hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         h_ch, s_ch, v_ch = cv2.split(hsv_img)
         _, chromatic_mask = cv2.threshold(s_ch, 40, 255, cv2.THRESH_BINARY)
@@ -217,7 +217,7 @@ if uploaded_file is not None:
     db_res = simulate_database_lookup(ivk_value, db_tolerance)
 
     # -----------------------------------------------------------------------
-    # ИНТЕРФЕЙСНАЯ ОТРИСОВКА (БЕЗОПАСНЫЙ СТАБИЛЬНЫЙ ВЫВОД)
+    # ИНТЕРФЕЙСНАЯ ОТРИСОВКА (ФИКСИРОВАННЫЙ ВЫВОД)
     # -----------------------------------------------------------------------
     col_left_img, col_right_data = st.columns([1.1, 0.9])
     
