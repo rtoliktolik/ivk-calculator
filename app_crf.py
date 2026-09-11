@@ -2,6 +2,7 @@ import streamlit as st
 import cv2
 import numpy as np
 import os
+import plotly.express as px
 
 # Справочный фон дороги — асфальт в пространстве CIELAB
 BG_L = 44.40
@@ -14,7 +15,6 @@ FP_POINTS = [1.19, 1.03, 1.00, 0.975, 0.93]
 
 # ИЗОЛИРОВАННАЯ ФУНКЦИЯ ДЛЯ ГАРАНТИРОВАННОГО ВЫВОДА ПРАВОЙ ПАНЕЛИ
 def render_analytics_panel(r, g, b, db_tol, premium_annual, curr_sym, space_container):
-    # Локальный перевод BGR в CIELAB
     v_R = (r / 255.0)
     v_G = (g / 255.0)
     v_B = (b / 255.0)
@@ -31,11 +31,9 @@ def render_analytics_panel(r, g, b, db_tol, premium_annual, curr_sym, space_cont
     a_val = 500 * (X - Y)
     b_val_lab = 200 * (Y - Z)
     
-    # Расчет ИВК и CRF
     ivk = float(np.linalg.norm(np.array([L_val, a_val, b_val_lab]) - np.array([BG_L, BG_A, BG_B])))
     crf = float(np.interp(ivk, XP_POINTS, FP_POINTS))
     
-    # Отрисовка числовых метрик на экране
     st.metric(label="Индекс визуального контраста (ИВК)", value=f"{ivk:.2f}")
     st.metric(label="Фактор риска цвета (CRF)", value=f"{crf:.2f}")
     
@@ -43,7 +41,6 @@ def render_analytics_panel(r, g, b, db_tol, premium_annual, curr_sym, space_cont
     st.info(f"Вердикт анализа: **{verdict}**")
     st.markdown("---")
     
-    # База данных страховых случаев
     db = [
         {"name": "Серый", "count": 3597270, "min": 0.0, "max": 25.0},
         {"name": "Черный", "count": 2634864, "min": 25.0, "max": 42.0},
@@ -63,7 +60,6 @@ def render_analytics_panel(r, g, b, db_tol, premium_annual, curr_sym, space_cont
     st.write(f"• **Активных совпадений:** {max(2450, total):,} шт.")
     st.write(f"• **Категории риска:** {', '.join(matched) if matched else 'Индивидуальный тон'}")
 
-    # Обновление тарифов КАСКО в боковой панели
     with space_container.container():
         st.write("**🧮 Расчет текущей премии**")
         st.write(f"Базовая: {premium_annual:.2f} {curr_sym}/год")
@@ -85,7 +81,7 @@ db_tolerance = st.sidebar.slider("Радиус допуска облака (± �
 currency_symbol = st.sidebar.selectbox("Выберите валюту:", ["\u20ac", "$", "\u00a3", "\u00a5", "руб."])
 base_premium_annual = st.sidebar.number_input(label="Базовая годовая премия:", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-analysis_mode = st.sidebar.radio("Выберите метод детекции:", ("Автоматический ИИ", "Ручной маркер (Ползунки осей)"), index=0)
+analysis_mode = st.sidebar.radio("Выберите метод детекции:", ("Автоматический ИИ", "Ручной маркер (Прямой клик мыши)"), index=0)
 sidebar_calc_space = st.sidebar.empty()
 
 uploaded_file = st.file_uploader("Шаг 1 — Загрузите фото автомобиля", type=["jpg", "jpeg", "png"])
@@ -99,28 +95,31 @@ if uploaded_file is not None:
     display_h = int((display_w / raw_w) * raw_h)
     img = cv2.resize(img_raw, (display_w, display_h))
     
+    # Хранение точных координат клика мыши в сессии
+    if "cx" not in st.session_state or "cy" not in st.session_state:
+        st.session_state.cx = int(display_w * 0.35)
+        st.session_state.cy = int(display_h * 0.55)
+        
     b_val, g_val, r_val = 54, 53, 136
     visual_img = img.copy()
-    
-    with st.expander("🎛️ Настройка положения прицела инспекции эмали кузова", expanded=(analysis_mode == "Ручной маркер (Ползунки осей)")):
-        pct_x = st.slider("Смещение прицела по горизонтали (Ось X в %)", 0, 100, 35, step=1)
-        pct_y = st.slider("Смещение прицела по вертикали (Ось Y в %)", 0, 100, 60, step=1)
-        
-    cx = int((pct_x / 100.0) * display_w)
-    cy = int((pct_y / 100.0) * display_h)
 
-    if analysis_mode == "Ручной маркер (Ползунки осей)":
+    if analysis_mode == "Ручной маркер (Прямой клик мыши)":
+        cx, cy = st.session_state.cx, st.session_state.cy
+        
+        # Накладываем бирюзовый инверсный прицел (XOR-эффект)
         cross_mask = np.zeros((display_h, display_w, 3), dtype=np.uint8)
-        cv2.line(cross_mask, (cx - 25, cy), (cx + 25, cy), (255, 255, 255), 3)
-        cv2.line(cross_mask, (cx, cy - 25), (cx, cy + 25), (255, 255, 255), 3)
+        cv2.line(cross_mask, (cx - 22, cy), (cx + 22, cy), (255, 255, 255), 3)
+        cv2.line(cross_mask, (cx, cy - 22), (cx, cy + 22), (255, 255, 255), 3)
         cv2.circle(cross_mask, (cx, cy), 4, (255, 255, 255), -1)
         visual_img = cv2.bitwise_xor(img.copy(), cross_mask)
         
+        # Замер цвета вокруг выбранной точки
         color_mask = np.zeros((display_h, display_w), dtype=np.uint8)
         cv2.circle(color_mask, (cx, cy), 8, 255, -1)
         mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=color_mask)
         b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
     else:
+        # Автоматический режим ИИ
         car_mask = np.zeros((display_h, display_w), dtype=np.uint8)
         try:
             from ultralytics import YOLO
@@ -166,11 +165,42 @@ if uploaded_file is not None:
     col_left_img, col_right_data = st.columns([1.1, 0.9])
     
     with col_left_img:
-        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона лакокрасочного покрытия автомобиля", width=520)
+        if analysis_mode == "Ручной маркер (Прямой клик мыши)":
+            st.markdown("**🎯 Кликните мышкой в любую точку прямо на фотографии машины для замера:**")
+            
+            # Переводим BGR в RGB для корректного Plotly
+            rgb_view = cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB)
+            
+            # Отрисовываем картинку как интерактивную карту Plotly, которая ловит клики
+            fig = px.imshow(rgb_view)
+            fig.update_layout(
+                width=display_w, height=display_h,
+                margin=dict(l=0, r=0, t=0, b=0),
+                xaxis=dict(showgrid=False, zeroline=False, visible=False),
+                yaxis=dict(showgrid=False, zeroline=False, visible=False),
+                clickmode='event+select'
+            )
+            
+            # Ловим событие клика по картинке в переменную click_event
+            click_event = st.plotly_chart(fig, config={'displayModeBar': False})
+            
+            # Математический перехват координат точки клика в реальном времени
+            if click_event and 'lassoPoints' not in str(click_event):
+                try:
+                    # Извлекаем точные пиксели X и Y клика из Plotly-структуры data
+                    point_data = click_event['selection']['points'][0]
+                    new_x = int(point_data['x'])
+                    new_y = int(point_data['y'])
+                    
+                    if new_x != st.session_state.cx or new_y != st.session_state.cy:
+                        st.session_state.cx = new_x
+                        st.session_state.cy = new_y
+                        st.rerun()
+                except Exception:
+                    pass
+        else:
+            # Обычный вывод для автоматического ИИ-режима
+            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Автоматическая зона сканирования ИИ", width=520)
+            
+        # Вывод точной цветовой плашки под картинкой автомобиля
         color_patch_bgr = np.full((38, display_w, 3), (b_val, g_val, r_val), dtype=np.uint8)
-        st.image(cv2.cvtColor(color_patch_bgr, cv2.COLOR_BGR2RGB), caption=f"Образец цвета кузова (RGB: {r_val}, {g_val}, {b_val})")
-
-    with col_right_data:
-        st.markdown("### 📊 Результаты экспресс-анализа")
-        # Вызов защищенной функции расчетов
-        render_analytics_panel(b_val, g_val, r_val, db_tolerance, base_premium_annual, currency_symbol, sidebar_calc_space)
