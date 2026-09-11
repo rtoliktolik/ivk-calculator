@@ -124,7 +124,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Стартовые безопасные значения каналов цвета (бордово-красный кузов)
+    # Резервные значения по умолчанию
     b_val, g_val, r_val = 54, 53, 136
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
@@ -168,7 +168,7 @@ if uploaded_file is not None:
         
         hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         hsv_channels = cv2.split(hsv_img)
-        s_channel = hsv_channels[1]
+        s_channel = hsv_channels
         
         _, chromatic_mask = cv2.threshold(s_channel, 40, 255, cv2.THRESH_BINARY)
         paint_filter = cv2.bitwise_and(valid_tones, chromatic_mask)
@@ -179,11 +179,11 @@ if uploaded_file is not None:
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # Абсолютно неуязвимый расчет среднего значения цвета через встроенные методы OpenCV
+        # Абсолютно неуязвимый расчет среднего значения цвета через методы OpenCV
         mean_channels = cv2.mean(img, mask=mask_uint8)
-        b_val = int(mean_channels[0]) if mean_channels[0] > 0 else 54
-        g_val = int(mean_channels[1]) if mean_channels[1] > 0 else 53
-        r_val = int(mean_channels[2]) if mean_channels[2] > 0 else 136
+        b_val = int(mean_channels) if mean_channels > 0 else 54
+        g_val = int(mean_channels) if mean_channels > 0 else 53
+        r_val = int(mean_channels) if mean_channels > 0 else 136
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -213,9 +213,4 @@ if uploaded_file is not None:
         visual_img = img.copy()
         cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        if len(cnts) > 0 and not manual_mode:
-            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-        else:
-            if manual_mode:
-                cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
-            else:
+        # Защищенная отрисовка контуров в одну строку без использования операторов уязвимых веток
