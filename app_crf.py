@@ -124,8 +124,8 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Дефолтные резервные значения цвета (глубокий синий)
-    b_val, g_val, r_val = 180, 80, 30
+    # Стартовые базовые значения цвета кузова (глубокий синий)
+    b_val, g_val, r_val = 154, 120, 81
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
     manual_mode = st.checkbox("🎯 Включить ручную коррекцию точки анализа", value=False, key="manual_checkbox")
@@ -156,7 +156,7 @@ if uploaded_file is not None:
         if np.sum(car_mask) == 0:
             cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
             
-        # 1. Сильное сжатие краев силуэта (эрозия) против арок и колес
+        # 1. Сильная эрозия маски на 35 пикселей против колес и арок
         kernel = np.ones((35, 35), np.uint8)
         clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
         
@@ -174,12 +174,15 @@ if uploaded_file is not None:
             final_calculated_mask = clean_paint_mask
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
-        mean_bgr = cv2.mean(img, mask=mask_uint8)
         
-        # Исправлено: безопасное поиндексное извлечение каналов BGR из кортежа cv2.mean
-        b_val = int(mean_bgr[0]) if mean_bgr[0] > 0 else 180
-        g_val = int(mean_bgr[1]) if mean_bgr[1] > 0 else 80
-        r_val = int(mean_bgr[2]) if mean_bgr[2] > 0 else 30
+        # Безопасный расчет среднего BGR значения цвета с помощью массивов NumPy
+        pixel_indices = np.where(mask_uint8 > 0)
+        if len(pixel_indices[0]) > 0:
+            selected_pixels = img[pixel_indices]
+            average_channels = np.mean(selected_pixels, axis=0)
+            b_val = int(average_channels[0])
+            g_val = int(average_channels[1])
+            r_val = int(average_channels[2])
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -216,6 +219,3 @@ if uploaded_file is not None:
             else:
                 cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
             
-        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Зона сканирования лакокрасочного покрытия", use_container_width=True)
-
-    with col_right_data:
