@@ -106,6 +106,7 @@ st.sidebar.header("💰 Страховой профиль")
 currency_symbol = st.sidebar.selectbox("Выберите валюту:", ["\u20ac", "$", "\u00a3", "\u00a5", "руб."])
 base_premium_annual = st.sidebar.number_input(label=f"Базовая годовая премия ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
+# Переключатель режимов замера цвета кузова
 st.sidebar.markdown("---")
 st.sidebar.header("🕹️ Управление замером")
 analysis_mode = st.sidebar.radio(
@@ -125,14 +126,15 @@ if uploaded_file is not None:
     img_raw = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     raw_h, raw_w, _ = img_raw.shape
     
+    # Оптимизация размера под вёрстку экрана
     display_w = 520
     display_h = int((display_w / raw_w) * raw_h)
     img = cv2.resize(img_raw, (display_w, display_h))
     
-    # Хранение координат в сессии
+    # Хранение координат в сессии Streamlit
     if "click_x" not in st.session_state or "click_y" not in st.session_state:
         st.session_state.click_x = int(display_w * 0.35)
-        st.session_state.click_y = int(display_h * 0.60)
+        st.session_state.click_y = int(display_h * 0.55)
         
     b_val, g_val, r_val = 54, 53, 136
     visual_img = img.copy()
@@ -143,7 +145,7 @@ if uploaded_file is not None:
     if analysis_mode == "Ручной маркер (Клик мыши)":
         cx, cy = st.session_state.click_x, st.session_state.click_y
         
-        # Накладываем прицел для интерактивного поля кликов
+        # Накладываем инвертированный бирюзовый прицел (XOR-эффект)
         cross_mask = np.zeros((display_h, display_w, 3), dtype=np.uint8)
         cv2.line(cross_mask, (cx - 22, cy), (cx + 22, cy), (255, 255, 255), 3)
         cv2.line(cross_mask, (cx, cy - 22), (cx, cy + 22), (255, 255, 255), 3)
@@ -156,11 +158,11 @@ if uploaded_file is not None:
         mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=color_mask)
         b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
     else:
-        # Автоматический режим ИИ
+        # Автоматический режим ИИ (Использует загруженный локальный файл весов)
         car_mask = np.zeros((display_h, display_w), dtype=np.uint8)
         try:
             from ultralytics import YOLO
-            model = YOLO("yolov8n-seg.pt")
+            model = YOLO("./yolov8n-seg.pt")
             results = model(img, verbose=False)
             for result in results:
                 if result.masks is not None:
@@ -200,7 +202,7 @@ if uploaded_file is not None:
         mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
         b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
 
-    # Общие сквозные расчеты индексов
+    # Общие сквозные расчеты индексов ИВК и CRF рисков
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
     ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
     predicted_crf = predict_crf_by_function(ivk_value)
@@ -222,12 +224,9 @@ if uploaded_file is not None:
         if analysis_mode == "Ручной маркер (Клик мыши)":
             st.markdown("**🎯 Кликните в любую точку на кузове автомобиля для мгновенного наведения прицела:**")
             
+            # Интерактивный захват координат клика мыши
             click_data = streamlit_image_coordinates(
                 cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB),
                 key="img_coordinates",
                 width=display_w
             )
-            
-            if click_data is not None:
-                new_cx = int(click_data["x"])
-                new_cy = int(click_data["y"])
