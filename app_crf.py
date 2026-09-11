@@ -124,7 +124,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Резервные значения цвета (чистый бордовый металлик)
+    # Стартовые безопасные значения каналов цвета (бордово-красный кузов)
     b_val, g_val, r_val = 54, 53, 136
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
@@ -179,15 +179,11 @@ if uploaded_file is not None:
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
         
-        # Безопасное попиксельное извлечение цвета без уязвимых условий
-        pixel_indices = np.where(mask_uint8 > 0)
-        selected_pixels = img[pixel_indices]
-        average_channels = np.mean(selected_pixels, axis=0) if pixel_indices[0].size > 0 else [180, 80, 30]
-        
-        # Надежное присвоение BGR каналов кузова спорткара
-        b_val = int(np.round(average_channels[0]))
-        g_val = int(np.round(average_channels[1]))
-        r_val = int(np.round(average_channels[2]))
+        # Абсолютно неуязвимый расчет среднего значения цвета через встроенные методы OpenCV
+        mean_channels = cv2.mean(img, mask=mask_uint8)
+        b_val = int(mean_channels[0]) if mean_channels[0] > 0 else 54
+        g_val = int(mean_channels[1]) if mean_channels[1] > 0 else 53
+        r_val = int(mean_channels[2]) if mean_channels[2] > 0 else 136
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -221,3 +217,5 @@ if uploaded_file is not None:
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
         else:
             if manual_mode:
+                cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+            else:
