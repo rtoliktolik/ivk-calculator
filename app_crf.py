@@ -164,13 +164,10 @@ if uploaded_file is not None:
             final_calculated_mask = clean_paint_mask
             
         mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
-        pixel_indices = np.where(mask_uint8 > 0)
-        selected_pixels = img[pixel_indices]
-        average_channels = np.mean(selected_pixels, axis=0) if pixel_indices[0].size > 0 else [54, 53, 136]
         
-        b_val = int(np.round(average_channels[0]))
-        g_val = int(np.round(average_channels[1]))
-        r_val = int(np.round(average_channels[2]))
+        # Безопасное извлечение каналов BGR кузова автомобиля через cv2.mean
+        mean_channels = cv2.mean(img, mask=mask_uint8)
+        b_val, g_val, r_val = int(mean_channels[0]), int(mean_channels[1]), int(mean_channels[2])
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -222,3 +219,4 @@ if uploaded_file is not None:
         db_res = simulate_database_lookup(ivk_value, db_tolerance)
         st.markdown("---")
         st.markdown(f"**🗄️ Страховое облако Big Data:**")
+        st.write(f"• **Активных совпадений в кластере:** {db_res['total_cars']:,} шт.")
