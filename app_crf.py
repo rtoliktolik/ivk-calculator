@@ -3,12 +3,12 @@ import cv2
 import numpy as np
 import os
 
-# Справочный фон дороги — асфальт в пространстве CIELAB
+# Довідковий фон дороги — асфальт у просторі CIELAB
 BG_L = 44.40
 BG_A = 0.00
 BG_B = 0.00
 
-# Точки для интерполяции кривой риска аварийности (CRF)
+# Точки для інтерполяції кривої ризику аварійності (CRF)
 XP_POINTS = [12.5, 33.5, 47.0, 58.5, 80.0]
 FP_POINTS = [1.19, 1.03, 1.00, 0.975, 0.93]
 
@@ -111,7 +111,7 @@ else:
 
 st.markdown("---")
 
-# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
+# --- СЕКЦІЯ НАЛАШТУВАНЬ У БІЧНІЙ ПАНЕЛІ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -120,19 +120,18 @@ st.sidebar.header("💰 Insurance Profile")
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# Контейнер в боковой панели для мгновенного вывода расчетов
+# Контейнер у бічній панелі для миттєвого виведення розрахунків
 sidebar_calc_space = st.sidebar.empty()
 
-# --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
+# --- ОСНОВНОЙ КОНТЕНТ ДОДАТКУ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # Безопасное чтение байт без блокировки интерфейса
     file_bytes = np.frombuffer(uploaded_file.getvalue(), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # Резервные значения цвета (бордовый)
+    # Резервні значення кольору
     r_val, g_val, b_val = 130, 38, 37
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
@@ -146,10 +145,8 @@ if uploaded_file is not None:
         b_raw, g_raw, r_raw = img[cy, cx]
         r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
     else:
-        # Быстрый и гарантированный алгоритм сегментации без зависания сервера
         car_mask = np.zeros((h, w), dtype=np.uint8)
         
-        # Ленивый импорт YOLO, чтобы сервер не вис при старте приложения
         try:
             from ultralytics import YOLO
             model = YOLO("yolov8n-seg.pt")
@@ -157,13 +154,14 @@ if uploaded_file is not None:
             for result in results:
                 if result.masks is not None:
                     for mask, cls in zip(result.masks.data, result.boxes.cls):
-                        if int(cls) in:
+                        # Синтаксис виправлено: тепер перевірка захищена від приховування
+                        if (int(cls) == 2 or int(cls) == 5 or int(cls) == 7):
                             m_np = cv2.resize(mask.cpu().numpy(), (w, h))
                             car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
         except Exception:
-            pass # Если библиотеки или весов нет, переключаемся на встроенный шлюз
+            pass
             
-        # Защитный шлюз: если ИИ не ответил мгновенно, анализируем центральную область
+        # Захисний шлюз: аналізуємо центр, якщо нейромережа не підключилася
         if np.sum(car_mask) == 0:
             cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
             
@@ -184,7 +182,7 @@ if uploaded_file is not None:
             
             b_val, g_val, r_val = int(dominant_bgr[0]), int(dominant_bgr[1]), int(dominant_bgr[2])
 
-    # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
+    # МАТЕМАТИЧНИЙ РОЗРАХУНОК ІНДЕКСІВ ТА ПРЕМІЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
     ivk_value = float(np.linalg.norm(np.array([p_L, p_a, p_b]) - np.array([BG_L, BG_A, BG_B])))
     predicted_crf = predict_crf_by_function(ivk_value)
@@ -195,14 +193,14 @@ if uploaded_file is not None:
     get_d_annual = float(val_annual - base_premium_annual)
     get_d_monthly = float(val_monthly - base_premium_monthly)
 
-    # ОБНОВЛЕНИЕ БОКОВОЙ ПАНЕЛИ
+    # ОБНОВЛЕННЯ БІЧНОЙ ПАНЕЛІ
     with sidebar_calc_space.container():
         st.write("**🧮 Live Premium Calculation**")
         st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
         st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{get_d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
         st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{get_d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
 
-    # ГАРАНТИРОВАННАЯ ОТРИСОВКА МАКЕТА
+    # ГАРАНТОВАНЕ ВІДОБРАЖЕННЯ МАКЕТА
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
@@ -219,3 +217,10 @@ if uploaded_file is not None:
             else:
                 cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
             
+        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+
+    with col_right_data:
+        st.subheader("📊 Express Analysis Results")
+        
+        col_ivk, col_crf = st.columns(2)
+        with col_ivk:
