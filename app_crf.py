@@ -185,7 +185,6 @@ if uploaded_file is not None:
             counts = np.bincount(labels)
             
             dominant_bgr = centers[np.argmax(counts)]
-            # Исправлено: извлечение реальных каналов цветности по индексам BGR матриц OpenCV
             b_val = int(dominant_bgr[0])
             g_val = int(dominant_bgr[1])
             r_val = int(dominant_bgr[2])
@@ -205,7 +204,7 @@ if uploaded_file is not None:
     with sidebar_calc_space.container():
         st.write("**🧮 Расчет текущей премии**")
         st.write(f"Базовая: {base_premium_annual:.2f} {currency_symbol}/год")
-        st.metric(label="Скорректированная годовая премия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
+        st.metric(label="Скорректированная годовая preмия", value=f"{val_annual:.2f} {currency_symbol}/год", delta=f"{get_d_annual:.2f} {currency_symbol}/год", delta_color="inverse")
         st.metric(label="Скорректированная месячная премия", value=f"{val_monthly:.2f} {currency_symbol}/мес", delta=f"{get_d_monthly:.2f} {currency_symbol}/мес", delta_color="inverse")
 
     # СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
@@ -221,3 +220,5 @@ if uploaded_file is not None:
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
         else:
             if manual_mode:
+                cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+            else:
