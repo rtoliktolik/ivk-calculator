@@ -103,16 +103,16 @@ db_tolerance = st.sidebar.slider("Радиус допуска облака (± �
 
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Страховой профиль")
-currency_symbol = st.sidebar.selectbox("Выберите валюту:", ["€", "$", "£", "¥", "руб."])
+currency_symbol = st.sidebar.selectbox("Выберите валюту:", ["\u20ac", "$", "\u00a3", "\u00a5", "руб."])
 base_premium_annual = st.sidebar.number_input(label=f"Базовая годовая премия ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-# ГАРАНТИРОВАННЫЙ ТУМБЛЕР ПЕРЕКЛЮЧЕНИЯ РЕЖИМОВ В БОКОВОЙ ПАНЕЛИ
+# ИСПРАВЛЕНО: Теперь автоматический ИИ-режим жестко стоит первым по умолчанию при старте
 st.sidebar.markdown("---")
 st.sidebar.header("🕹️ Управление замером")
 analysis_mode = st.sidebar.radio(
     "Выберите метод детекции:",
     ("Автоматический ИИ", "Ручной маркер (Клик мыши)"),
-    index=1 # По умолчанию открывается в ручном, так как он более точный
+    index=0
 )
 
 # Контейнер в боковой панели для расчетов премии
@@ -126,16 +126,15 @@ if uploaded_file is not None:
     img_raw = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     raw_h, raw_w, _ = img_raw.shape
     
-    # Оптимизация размера вровень с разметкой
+    # Оптимизация под вёрстку экрана
     display_w = 520
     display_h = int((display_w / raw_w) * raw_h)
     img = cv2.resize(img_raw, (display_w, display_h))
     
-    # Стартовые безопасные координаты по умолчанию (Сдвинуты с колеса ровно на ЛКП капота)
+    # Капот по умолчанию (стартовая точка без черных колес)
     default_cx = int(display_w * 0.35)
     default_cy = int(display_h * 0.60)
     
-    # Инициализация переменных цвета
     b_val, g_val, r_val = 54, 53, 136
     visual_img = img.copy()
     
@@ -153,27 +152,27 @@ if uploaded_file is not None:
                 width=display_w
             )
             
-            # Присваиваем координаты клика, если пользователь нажал на фото
             cx = int(click_data["x"]) if click_data is not None else default_cx
             cy = int(click_data["y"]) if click_data is not None else default_cy
             
-            # Строим инверсный прицел строго в точке клика (XOR маска)
+            # ИСПРАВЛЕНО: Строим инверсный прицел, который летит строго за курсором клика мыши
             cross_mask = np.zeros((display_h, display_w, 3), dtype=np.uint8)
             cv2.line(cross_mask, (cx - 22, cy), (cx + 22, cy), (255, 255, 255), 3)
             cv2.line(cross_mask, (cx, cy - 22), (cx, cy + 22), (255, 255, 255), 3)
             cv2.circle(cross_mask, (cx, cy), 4, (255, 255, 255), -1)
             visual_img = cv2.bitwise_xor(img.copy(), cross_mask)
             
-            # Собираем локальный цвет кузова вокруг прицела
             color_mask = np.zeros((display_h, display_w), dtype=np.uint8)
             cv2.circle(color_mask, (cx, cy), 8, 255, -1)
             mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=color_mask)
             b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
             
+            # Выводим картинку с прицелом через интерактивный компонент координат
+            # st.image здесь не нужен, чтобы не дублировать холст
+            
         else:
             st.markdown("**🤖 ИИ изолирует лакокрасочное покрытие кузова (без стекол и колес):**")
             
-            # Автоматическая YOLO-сегментация
             car_mask = np.zeros((display_h, display_w), dtype=np.uint8)
             try:
                 from ultralytics import YOLO
@@ -195,15 +194,15 @@ if uploaded_file is not None:
             kernel = np.ones((35, 35), np.uint8)
             clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
             
-            # Удаление стекол по HSV
             gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             _, dark_noise_mask = cv2.threshold(gray_img, 35, 255, cv2.THRESH_BINARY)
             _, bright_glare_mask = cv2.threshold(gray_img, 220, 255, cv2.THRESH_BINARY_INV)
             valid_tones = cv2.bitwise_and(dark_noise_mask, bright_glare_mask)
             
+            # Защищенное разбиение каналов через cv2.split() во избежание затирания индексов парсером
             hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-            s_channel = hsv_img[:, :, 1]
-            _, chromatic_mask = cv2.threshold(s_channel, 40, 255, cv2.THRESH_BINARY)
+            h_ch, s_ch, v_ch = cv2.split(hsv_img)
+            _, chromatic_mask = cv2.threshold(s_ch, 40, 255, cv2.THRESH_BINARY)
             
             paint_filter = cv2.bitwise_and(valid_tones, chromatic_mask)
             final_calculated_mask = cv2.bitwise_and(clean_paint_mask, paint_filter)
@@ -212,16 +211,15 @@ if uploaded_file is not None:
                 
             mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
             
-            # Отрисовка зеленого контура ИИ
+            # ИСПРАВЛЕНО: синтаксическая ошибка со строгим объявлением ширины линии OpenCV устранена
             cnts, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0),  green_width := 2)
+            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
             
             mean_b, mean_g, mean_r, _ = cv2.mean(img, mask=mask_uint8)
             b_val, g_val, r_val = int(mean_b), int(mean_g), int(mean_r)
             
-            # Отрисовываем картинку стандартным методом Streamlit только в авто-режиме
+            # В авто-режиме используем обычный вывод, так как клики не требуются
             st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Автоматическая зона сканирования ИИ", width=display_w)
             
-        # Вывод точной цветовой плашки под картинкой
+        # Вывод точной цветовой плашки под картинкой (Работает стабильно для обоих режимов)
         color_patch_bgr = np.full((38, display_w, 3), (b_val, g_val, r_val), dtype=np.uint8)
-        color_patch_rgb = cv2.cvtColor(color_patch_bgr, cv2.COLOR_BGR2RGB)
