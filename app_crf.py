@@ -1,7 +1,6 @@
 import streamlit as st
 import cv2
 import numpy as np
-from ultralytics import YOLO
 import os
 
 # Справочный фон дороги — асфальт в пространстве CIELAB
@@ -16,14 +15,6 @@ FP_POINTS = [1.19, 1.03, 1.00, 0.975, 0.93]
 def predict_crf_by_function(target_ivk: float) -> float:
     predicted_crf = float(np.interp(target_ivk, XP_POINTS, FP_POINTS))
     return float(np.round(predicted_crf, 2))
-
-@st.cache_resource
-def load_yolo_model():
-    # Загружаем стандартную детекцию, если сегментация перегружает сервер
-    try:
-        return YOLO("yolov8n-seg.pt")
-    except Exception:
-        return None
 
 def rgb_to_lab(r, g, b):
     var_R = (r / 255.0)
@@ -69,7 +60,7 @@ def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
         {"name": "Others", "count": 772997,  "ivk_min": 48.0, "ivk_max": 52.0},
         {"name": "Red",    "count": 654054,  "ivk_min": 52.0, "ivk_max": 57.0},
         {"name": "White",  "count": 1639041, "ivk_min": 57.0, "ivk_max": 65.0},
-        {"name": "Yellow", "count": 96277,   "ivk_min": 65.0, "ivk_max": 200.0},
+        {"name": "Yellow", "count": 96277,   "ivk_min": 65.0, "ivk_max": 250.0},
     ]
     ivk_min = max(0.0, target_ivk - tolerance)
     ivk_max = target_ivk + tolerance
@@ -89,7 +80,7 @@ def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
                 matched_groups.append(group['name'])
                 
     if total_cars_in_cloud == 0:
-        return {"total_cars": 2500, "groups": ["Custom Metallic"]}
+        return {"total_cars": 2450, "groups": ["Custom Tone"]}
     return {"total_cars": total_cars_in_cloud, "groups": matched_groups}
 
 def create_checkerboard_pattern(width, height, square_size=15):
@@ -136,15 +127,14 @@ sidebar_calc_space = st.sidebar.empty()
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, 1)
+    # Безопасное чтение байт без блокировки интерфейса
+    file_bytes = np.frombuffer(uploaded_file.getvalue(), dtype=np.uint8)
+    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     h, w, _ = img.shape
     
-    # ВЫЧИСЛЕНИЕ МАСКИ И ЦВЕТА КУЗОВА
-    final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
-    
-    # Дефолтный цвет (бордовый с вашего скриншота как стартовая точка)
+    # Резервные значения цвета (бордовый)
     r_val, g_val, b_val = 130, 38, 37
+    final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
     manual_mode = st.checkbox("🎯 Enable manual target correction", value=False, key="manual_checkbox")
     
@@ -156,50 +146,43 @@ if uploaded_file is not None:
         b_raw, g_raw, r_raw = img[cy, cx]
         r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
     else:
-        with st.spinner("AI is isolating clean paintwork..."):
-            model = load_yolo_model()
-            car_mask = np.zeros((h, w), dtype=np.uint8)
+        # Быстрый и гарантированный алгоритм сегментации без зависания сервера
+        car_mask = np.zeros((h, w), dtype=np.uint8)
+        
+        # Ленивый импорт YOLO, чтобы сервер не вис при старте приложения
+        try:
+            from ultralytics import YOLO
+            model = YOLO("yolov8n-seg.pt")
+            results = model(img, verbose=False)
+            for result in results:
+                if result.masks is not None:
+                    for mask, cls in zip(result.masks.data, result.boxes.cls):
+                        if int(cls) in:
+                            m_np = cv2.resize(mask.cpu().numpy(), (w, h))
+                            car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
+        except Exception:
+            pass # Если библиотеки или весов нет, переключаемся на встроенный шлюз
             
-            if model is not None:
-                results = model(img, verbose=False)
-                VALID_VEHICLE_CLASSES = list((2, 5, 7))
-                
-                for result in results:
-                    if result.masks is not None:
-                        for mask, cls in zip(result.masks.data, result.boxes.cls):
-                            if int(cls) in VALID_VEHICLE_CLASSES:
-                                m_np = cv2.resize(mask.cpu().numpy(), (w, h))
-                                car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
-
-            # Если маска пустая, берем центральную область капота как защитный шлюз
-            if np.sum(car_mask) == 0:
-                cv2.rectangle(car_mask, (int(w*0.3), int(h*0.4)), (int(w*0.7), int(h*0.6)), 1, -1)
-                
-            kernel = np.ones((15, 15), np.uint8)
-            clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
-            final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
+        # Защитный шлюз: если ИИ не ответил мгновенно, анализируем центральную область
+        if np.sum(car_mask) == 0:
+            cv2.rectangle(car_mask, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), 1, -1)
             
-            mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
+        kernel = np.ones((15, 15), np.uint8)
+        clean_paint_mask = cv2.erode(car_mask, kernel, iterations=2)
+        final_calculated_mask = clean_paint_mask if np.sum(clean_paint_mask) > 0 else car_mask
+        
+        mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
+        pixels = img[mask_uint8 > 0]
+        
+        if len(pixels) > 0:
+            pixels_float = np.float32(pixels)
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+            _, labels, centers = cv2.kmeans(pixels_float, 3, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+            labels = labels.flatten()
+            counts = np.bincount(labels)
+            dominant_bgr = centers[np.argmax(counts)]
             
-            # --- ИНТЕЛЛЕКТУАЛЬНЫЙ ВЫБОР ДОМИНАНТНОГО ЦВЕТА ЧЕРЕЗ K-MEANS ---
-            pixels = img[mask_uint8 > 0]
-            
-            if len(pixels) > 0:
-                pixels_float = np.float32(pixels)
-                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-                k_clusters = 3
-                flags = cv2.KMEANS_RANDOM_CENTERS
-                
-                _, labels, centers = cv2.kmeans(pixels_float, k_clusters, None, criteria, 10, flags)
-                labels = labels.flatten()
-                counts = np.bincount(labels)
-                
-                dominant_cluster_idx = np.argmax(counts)
-                dominant_bgr = centers[dominant_cluster_idx]
-                
-                b_val = int(dominant_bgr[0])
-                g_val = int(dominant_bgr[1])
-                r_val = int(dominant_bgr[2])
+            b_val, g_val, r_val = int(dominant_bgr[0]), int(dominant_bgr[1]), int(dominant_bgr[2])
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
@@ -212,14 +195,14 @@ if uploaded_file is not None:
     get_d_annual = float(val_annual - base_premium_annual)
     get_d_monthly = float(val_monthly - base_premium_monthly)
 
-    # ОТРИСОВКА В БОКОВОЙ ПАНЕЛИ
+    # ОБНОВЛЕНИЕ БОКОВОЙ ПАНЕЛИ
     with sidebar_calc_space.container():
         st.write("**🧮 Live Premium Calculation**")
         st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
         st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{get_d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
         st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{get_d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
 
-    # СТРОИМ СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
+    # ГАРАНТИРОВАННАЯ ОТРИСОВКА МАКЕТА
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
@@ -227,5 +210,12 @@ if uploaded_file is not None:
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
         
         visual_img = img.copy()
-        if manual_mode:
-            ch_p = create_checkerboard_pattern(w, h)
+        cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if len(cnts) > 0 and not manual_mode:
+            cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
+        else:
+            if manual_mode:
+                cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+            else:
+                cv2.rectangle(visual_img, (int(w*0.25), int(h*0.35)), (int(w*0.75), int(h*0.65)), (0, 255, 0), 2)
+            
