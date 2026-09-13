@@ -221,5 +221,26 @@ if uploaded_file is not None:
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
             
         st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
-
+with col_right_data:
+        st.subheader("📊 Express Analysis Results")
+        
+        col_ivk, col_crf = st.columns(2)
+        with col_ivk:
+            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
+        with col_crf:
+            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
+        
+        status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
+        st.write(f"**Current Visibility Status:** {status_text}")
+        st.markdown("---")
+        
+        m1, m2 = st.columns(2)
+        m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
+        m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
+        st.markdown("---")
+        
+        db_res = simulate_database_lookup(ivk_value, db_tolerance)
+        st.subheader("🔮 Predictive Evaluation by Databases")
+        st.write(f"Found **{db_res['total_cars']:,}** registered vehicles in the tolerance cloud.")
+        st.caption(f"Related Statistical Groups: {', '.join(db_res['groups'])}")
    
