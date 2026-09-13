@@ -4,7 +4,6 @@ import numpy as np
 from ultralytics import YOLO
 import os
 
-# Fixed reference road background constant (Asphalt)
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
 
 def predict_crf_by_function(target_ivk: float) -> float:
@@ -55,15 +54,6 @@ st.markdown("""
     <style>
     [data-testid="stMetricValue"] { font-size: 3.5rem !important; font-weight: bold !important; }
     [data-testid="stMetricLabel"] { font-size: 1.3rem !important; }
-    
-    /* Корректный разворот слайдера Y в вертикальное положение без сдвигов */
-    .vertical-slider-container div[data-testid="stSlider"] > div {
-        writing-mode: vertical-lr !important;
-        direction: rtl !important;
-        height: 340px !important;
-        padding-left: 5px !important;
-        margin: 0 auto !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -102,27 +92,19 @@ if uploaded_file is not None:
         manual_mode = st.checkbox("🎯 Enable manual target correction")
         
         if manual_mode:
-            # Слайдер Х располагается горизонтально ровно по длине всей картинки НАД ней
-            cx = st.slider("Horizontal Position (X Target)", 0, w - 1, int(w * 0.5), step=1)
+            st.markdown("**🎯 Координатная панель прицеливания (двойной ползунок):**")
             
-            # Жесткие пропорции колонок: 1 часть под ползунок Y, 18 частей под фото (картинка не сожмется)
-            inner_slider_col, inner_img_col = st.columns([1, 18])
+            # Единый стабильный блок управления во всю ширину картинки
+            cx = st.slider("Сдвиг прицела по ГОРИЗОНТАЛИ (X)", 0, w - 1, int(w * 0.5), step=1)
+            cy = st.slider("Сдвиг прицела по ВЕРТИКАЛИ (Y)", 0, h - 1, int(h * 0.65), step=1)
             
-            with inner_slider_col:
-                st.write("<div style='text-align:center; font-weight:bold; font-size:14px; margin-bottom:5px;'>Y</div>", unsafe_allow_html=True)
-                st.markdown('<div class="vertical-slider-container">', unsafe_allow_html=True)
-                cy_input = st.slider("Vertical Position (Y Target)", 0, h - 1, int(h * 0.35), step=1, label_visibility="collapsed")
-                st.markdown('</div>', unsafe_allow_html=True)
-                
             cx = max(0, min(w - 1, int(cx)))
-            # Синхронизация осей: ползунок Y теперь перемещает прицел интуитивно правильно (вверх-вверх, вниз-вниз)
-            cy_corrected = (h - 1) - cy_input
-            cy_corrected = max(0, min(h - 1, int(cy_corrected)))
+            cy = max(0, min(h - 1, int(cy)))
             
-            x1, y1 = max(0, cx - 10), max(0, cy_corrected - 10)
-            x2, y2 = min(w, cx + 10), min(h, cy_corrected + 10)
+            x1, y1 = max(0, cx - 10), max(0, cy - 10)
+            x2, y2 = min(w, cx + 10), min(h, cy + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
-            raw_dominant_color = img[cy_corrected, cx]
+            raw_dominant_color = img[cy, cx]
         else:
             with st.spinner("AI is isolating clean paintwork..."):
                 model = YOLO("yolov8n-seg.pt")
@@ -156,16 +138,15 @@ if uploaded_file is not None:
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
-                # Огромный трехцветный прицел высокой видимости (увеличен в 2 раза)
-                cv2.drawMarker(visual_img, (cx, cy_corrected), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
-                cv2.drawMarker(visual_img, (cx, cy_corrected), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
-                cv2.drawMarker(visual_img, (cx, cy_corrected), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
-                with inner_img_col:
-                    st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+                # Огромный трехцветный прицел (Увеличен ровно в 2 раза для идеальной видимости)
+                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
+                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
+                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
             else:
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-                st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+                
+            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
     # --- НАДЕЖНЫЙ ИЗОЛИРОВАННЫЙ РАСЧЕТ И ПОЛНЫЙ ВЫВОД ПРАВОЙ КОЛОНКИ ---
     if raw_dominant_color is not None:
@@ -202,3 +183,27 @@ if uploaded_file is not None:
         dm = float(vm - bm)
         
         txt_annual = f"{va:.2f} {currency_symbol}/yr"
+        txt_delta_a = f"{da:.2f} {currency_symbol}/yr"
+        txt_monthly = f"{vm:.2f} {currency_symbol}/mo"
+        txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
+
+        with sidebar_calc_space.container():
+            st.write("**🧮 Live Premium Calculation**")
+            st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
+            st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
+            st.metric(label="Adjusted Monthly Premium", value=txt_monthly, delta=txt_delta_m, delta_color="inverse")
+        
+        with col_right_data:
+            r_val = int(pixel_rgb.item(0, 0, 0))
+            g_val = int(pixel_rgb.item(0, 0, 1))
+            b_val = int(pixel_rgb.item(0, 0, 2))
+            
+            st.subheader("📊 Express Analysis Results")
+            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
+            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
+            
+            status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
+            st.write(f"**Current Visibility Status:** {status_text}")
+            st.markdown("---")
+            
+            m1, m2 = st.columns(2)
