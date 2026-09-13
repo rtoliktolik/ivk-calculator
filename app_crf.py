@@ -57,6 +57,15 @@ st.markdown("""
     <style>
     [data-testid="stMetricValue"] { font-size: 3.5rem !important; font-weight: bold !important; }
     [data-testid="stMetricLabel"] { font-size: 1.3rem !important; }
+    
+    /* Стилизация вертикального ползунка через CSS-трансформацию */
+    .vertical-slider div[data-testid="stSlider"] > div {
+        writing-mode: vertical-lr !important;
+        direction: rtl !important;
+        height: 340px !important;
+        padding-left: 10px !important;
+        margin: 0 auto !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -87,73 +96,84 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
+    # Главная сетка приложения (50/50)
     col_left_img, col_right_data = st.columns(2)
     raw_dominant_color = None
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
-    with col_left_img:
-        manual_mode = st.checkbox("🎯 Enable manual target correction")
-        
-        if manual_mode:
-            # Слайдеры НАД картинкой
+    # Инициализация переменных ручного режима
+    manual_mode = col_left_img.checkbox("🎯 Enable manual target correction")
+    
+    if manual_mode:
+        with col_left_img:
+            # Горизонтальный бегунок X располагается строго НАД картинкой во всю её длину
             cx = st.slider("Horizontal Position (X Target)", 0, w - 1, int(w * 0.5), step=1)
-            cy = st.slider("Vertical Position (Y Target)", 0, h - 1, int(h * 0.65), step=1)
             
+            # Внутренняя пропорциональная сетка: бегунок Y слева (1 часть), фото справа (11 частей)
+            inner_col_slider, inner_col_img = st.columns([1, 11])
+            
+            with inner_col_slider:
+                st.write("<div style='text-align:center; font-weight:bold; font-size:12px; margin-bottom:5px;'>Y</div>", unsafe_allow_html=True)
+                st.markdown('<div class="vertical-slider">', unsafe_allow_html=True)
+                cy = st.slider("Y Tracker", 0, h - 1, int(h * 0.65), step=1, label_visibility="collapsed")
+                st.markdown('</div>', unsafe_allow_html=True)
+                
             cx = max(0, min(w - 1, int(cx)))
             cy = max(0, min(h - 1, int(cy)))
             
-            # Стабильное формирование маски региона замера (20х20 пикселей)
             x1, y1 = max(0, cx - 10), max(0, cy - 10)
             x2, y2 = min(w, cx + 10), min(h, cy + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
             raw_dominant_color = img[cy, cx]
-        else:
-            with st.spinner("AI is isolating clean paintwork..."):
-                model = YOLO("yolov8n-seg.pt")
-                results = model(img, verbose=False)
-                car_mask = np.zeros((h, w), dtype=np.uint8)
-                exclude_mask = np.zeros((h, w), dtype=np.uint8)
-                for result in results:
-                    if result.masks is not None:
-                        for mask, cls in zip(result.masks.data, result.boxes.cls):
-                            m_np = cv2.resize(mask.cpu().numpy(), (w, h))
-                            m_bin = (m_np > 0.5).astype(np.uint8)
-                            c_idx = int(cls)
-                            if c_idx == 2:
-                                car_mask = cv2.bitwise_or(car_mask, m_bin)
-                            if c_idx == 4 or c_idx == 7 or c_idx == 13:
-                                exclude_mask = cv2.bitwise_or(exclude_mask, m_bin)
-                if np.sum(car_mask) > 0:
-                    car_without_parts = cv2.bitwise_and(car_mask, cv2.bitwise_not(exclude_mask))
-                    kernel = np.ones((11, 11), np.uint8)
-                    clean_paint_mask = cv2.erode(car_without_parts, kernel, iterations=2)
-                    car_pixels_bgr = img[clean_paint_mask == 1]
-                    if len(car_pixels_bgr) > 0:
-                        final_calculated_mask[clean_paint_mask == 1] = 1
-                        raw_dominant_color = np.median(car_pixels_bgr, axis=0)
-                else:
-                    st.error("❌ AI could not find a car. Please enable manual target correction.")
-
-        if raw_dominant_color is not None:
-            visual_img = img.copy()
-            ch_p = create_checkerboard_pattern(w, h)
-            visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
-            
-            if manual_mode:
-                # Изменение: Все маркеры увеличены ровно в 2 раза для максимальной видимости
-                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
-                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
-                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
+    else:
+        with st.spinner("AI is isolating clean paintwork..."):
+            model = YOLO("yolov8n-seg.pt")
+            results = model(img, verbose=False)
+            car_mask = np.zeros((h, w), dtype=np.uint8)
+            exclude_mask = np.zeros((h, w), dtype=np.uint8)
+            for result in results:
+                if result.masks is not None:
+                    for mask, cls in zip(result.masks.data, result.boxes.cls):
+                        m_np = cv2.resize(mask.cpu().numpy(), (w, h))
+                        m_bin = (m_np > 0.5).astype(np.uint8)
+                        c_idx = int(cls)
+                        if c_idx == 2:
+                            car_mask = cv2.bitwise_or(car_mask, m_bin)
+                        if c_idx == 4 or c_idx == 7 or c_idx == 13:
+                            exclude_mask = cv2.bitwise_or(exclude_mask, m_bin)
+            if np.sum(car_mask) > 0:
+                car_without_parts = cv2.bitwise_and(car_mask, cv2.bitwise_not(exclude_mask))
+                kernel = np.ones((11, 11), np.uint8)
+                clean_paint_mask = cv2.erode(car_without_parts, kernel, iterations=2)
+                car_pixels_bgr = img[clean_paint_mask == 1]
+                if len(car_pixels_bgr) > 0:
+                    final_calculated_mask[clean_paint_mask == 1] = 1
+                    raw_dominant_color = np.median(car_pixels_bgr, axis=0)
             else:
+                st.error("❌ AI could not find a car. Please enable manual target correction.")
+
+    # Генерация изображения с прицелом/контуром
+    if raw_dominant_color is not None:
+        visual_img = img.copy()
+        ch_p = create_checkerboard_pattern(w, h)
+        visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
+        
+        if manual_mode:
+            # Крупный полицветный прицел высокой видимости (увеличен)
+            cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
+            cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
+            cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
+            with inner_col_img:
+                st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+        else:
+            with col_left_img:
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-                
-            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+                st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    # --- СТАБИЛЬНЫЙ РАСЧЕТ И ОТРИСОВКА ПРАВОЙ КОЛОНКИ ---
+    # --- ИЗОЛИРОВАННЫЙ РАСЧЕТ И ПОЛНЫЙ ВЫВОД ПРАВОЙ КОЛОНКИ ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
-        
         pixel_bgr = np.uint8([[list(dominant_bgr)]])
         pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
         pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
@@ -186,22 +206,3 @@ if uploaded_file is not None:
         dm = float(vm - bm)
         
         txt_annual = f"{va:.2f} {currency_symbol}/yr"
-        txt_delta_a = f"{da:.2f} {currency_symbol}/yr"
-        txt_monthly = f"{vm:.2f} {currency_symbol}/mo"
-        txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
-
-        with sidebar_calc_space.container():
-            st.write("**🧮 Live Premium Calculation**")
-            st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
-            st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
-            st.metric(label="Adjusted Monthly Premium", value=txt_monthly, delta=txt_delta_m, delta_color="inverse")
-        
-        with col_right_data:
-            r_val = int(pixel_rgb.item(0, 0, 0))
-            g_val = int(pixel_rgb.item(0, 0, 1))
-            b_val = int(pixel_rgb.item(0, 0, 2))
-            
-            st.subheader("📊 Express Analysis Results")
-            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
-            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-            
