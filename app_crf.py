@@ -222,4 +222,4 @@ if uploaded_file is not None:
             
         st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    with col_right_data:
+   
