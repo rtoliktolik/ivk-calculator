@@ -144,32 +144,29 @@ if uploaded_file is not None:
                 
             st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    # --- ЗАЩИЩЕННЫЙ РАСЧЕТ И ОТРИСОВКА ПРАВОЙ КОЛОНКИ ---
+    # --- ЗАЩИЩЕННЫЙ РАСЧЕТ И МГНОВЕННЫЙ ВЫВОД ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         
-        # Безопасное извлечение каналов B, G, R по плоским индексам массива
-        b_channel = int(dominant_bgr.item(0))
-        g_channel = int(dominant_bgr.item(1))
-        r_channel = int(dominant_bgr.item(2))
+        # Получаем чистые числовые каналы BGR
+        b_channel = int(dominant_bgr[0])
+        g_channel = int(dominant_bgr[1])
+        r_channel = int(dominant_bgr[2])
         
-        pixel_bgr = np.uint8([[[b_channel, g_channel, r_channel]]])
-        pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
-        pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
+        # Защищенная LAB-матрица из нативного массива для исключения падений .item()
+        pixel_bgr_mat = np.uint8([[[b_channel, g_channel, r_channel]]])
+        pixel_rgb_mat = cv2.cvtColor(pixel_bgr_mat, cv2.COLOR_BGR2RGB)
         
-        lab_matrix = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab)
-        val_L = float(lab_matrix.item(0))
-        val_a = float(lab_matrix.item(1))
-        val_b = float(lab_matrix.item(2))
+        lab_matrix = cv2.cvtColor(pixel_rgb_mat.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
+        val_L = float(lab_matrix[0, 0, 0])
+        val_a = float(lab_matrix[0, 0, 1])
+        val_b = float(lab_matrix[0, 0, 2])
         
-        bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
-        bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
-        bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
-        
-        bg_lab_matrix = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab)
-        bg_L = float(bg_lab_matrix.item(0, 0, 0))
-        bg_a = float(bg_lab_matrix.item(0, 0, 1))
-        bg_b = float(bg_lab_matrix.item(0, 0, 2))
+        bg_bgr_mat = np.uint8([[[int(CONSTANT_ROAD_BACKGROUND_RGB[2]), int(CONSTANT_ROAD_BACKGROUND_RGB[1]), int(CONSTANT_ROAD_BACKGROUND_RGB[0])]]])
+        bg_lab_matrix = cv2.cvtColor(bg_bgr_mat.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
+        bg_L = float(bg_lab_matrix[0, 0, 0])
+        bg_a = float(bg_lab_matrix[0, 0, 1])
+        bg_b = float(bg_lab_matrix[0, 0, 2])
         
         delta_L = float(abs(val_L - bg_L))
         delta_ab = float(np.sqrt(max(0.0, (val_a - bg_a)**2 + (val_b - bg_b)**2)) + 1e-5)
@@ -204,5 +201,4 @@ if uploaded_file is not None:
             st.write(f"**Current Visibility Status:** {status_text}")
             st.markdown("---")
             
-            # --- ИСПРАВЛЕНО: Индикатор перенесен в самый верх аналитики (сразу под статус риска) ---
             st.write(f"**Detected Car Body Color (RGB):** {r_channel}, {g_channel}, {b_channel}")
