@@ -41,7 +41,7 @@ def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
             cars_in_sample = int(group["count"] * ratio)
             if cars_in_sample > 0:
                 total_cars_in_cloud += cars_in_sample
-                matched_groups.append(group['name'])
+                matched_groups.append(group["name"])
                 
     if total_cars_in_cloud == 0:
         return {"total_cars": 0, "groups": ["Unique Shade"]}
@@ -166,16 +166,20 @@ if uploaded_file is not None:
             
             pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
             
-            # Безпечне вилучення значень LAB через ітератор (захист від зникнення дужок)
-            lab_array = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
-            val_L, val_a, val_b = float(lab_array[0]), float(lab_array[1]), float(lab_array[2])
+            # Извлекаем значения LAB через безопасный метод .item()
+            lab_matrix = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab)
+            val_L = float(lab_matrix.item(0, 0, 0))
+            val_a = float(lab_matrix.item(0, 0, 1))
+            val_b = float(lab_matrix.item(0, 0, 2))
             
             bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
             bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
             bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
             
-            bg_lab_array = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
-            bg_L, bg_a, bg_b = float(bg_lab_array[0]), float(bg_lab_array[1]), float(bg_lab_array[2])
+            bg_lab_matrix = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab)
+            bg_L = float(bg_lab_matrix.item(0, 0, 0))
+            bg_a = float(bg_lab_matrix.item(0, 0, 1))
+            bg_b = float(bg_lab_matrix.item(0, 0, 2))
             
             delta_L = float(abs(val_L - bg_L))
             delta_ab = float(np.sqrt((val_a - bg_a)**2 + (val_b - bg_b)**2))
@@ -198,6 +202,3 @@ if uploaded_file is not None:
                     label="Adjusted Annual Premium", 
                     value=f"{val_annual:.2f} {currency_symbol}/yr", 
                     delta=f"{get_d_annual:.2f} {currency_symbol}/yr", 
-                    delta_color="inverse"
-                )
-                st.metric(
