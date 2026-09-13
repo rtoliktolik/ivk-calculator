@@ -75,9 +75,19 @@ else:
 
 st.markdown("---")
 
+# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
+st.sidebar.markdown("---")
+st.sidebar.header("💰 Insurance Profile")
+currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
+base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
+
+# Контейнер для мгновенного динамического вывода расчетов премий
+sidebar_calc_space = st.sidebar.empty()
+
+# --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -169,33 +179,24 @@ if uploaded_file is not None:
             db_res = simulate_database_lookup(ivk_value, db_tolerance)
             predicted_crf = predict_crf_by_function(ivk_value)
             
-            rgb_flat = pixel_rgb.flatten()
-            r_val = int(rgb_flat[0])
-            g_val = int(rgb_flat[1])
-            b_val = int(rgb_flat[2])
-            
-            st.subheader("📊 Express Analysis Results")
-            
-            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
-            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-            
-            status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
-            st.write(f"**Current Visibility Status:** {status_text}")
-            
-            st.markdown("---")
-            m1, m2 = st.columns(2)
-            m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
-            m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
-            
-            st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
-            
-            pure_color_block = np.zeros((60, 400, 3), dtype=np.uint8)
-            pure_color_block[:] = [r_val, g_val, b_val]
-            st.image(pure_color_block, caption="Isolated Paint Shade")
-            
-            st.markdown("---")
-            st.subheader("🔮 Predictive Evaluation by Databases")
-            st.write(f"Found **{db_res['total_cars']:,}** registered vehicles in the tolerance cloud ({ivk_value:.2f} ± {db_tolerance}).")
-            st.caption(f"Related Statistical Groups: {', '.join(db_res['groups'])}")
-            
-            st.write("### Continuous Accident Risk Regression Curve")
+            # --- ВОССТАНОВЛЕННЫЙ ФИНАНСОВЫЙ МАТЕМАТИЧЕСКИЙ БЛОК ---
+            base_premium_monthly = float(base_premium_annual / 12.0)
+            val_annual = float(base_premium_annual * predicted_crf)
+            val_monthly = float(val_annual / 12.0)
+            get_d_annual = float(val_annual - base_premium_annual)
+            get_d_monthly = float(val_monthly - base_premium_monthly)
+
+            # --- ВОССТАНОВЛЕННЫЙ ДИНАМИЧЕСКИЙ ВЫВОД В БОКОВУЮ ПАНЕЛЬ ---
+            with sidebar_calc_space.container():
+                st.write("**🧮 Live Premium Calculation**")
+                st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr ({base_premium_monthly:.2f} {currency_symbol}/mo)")
+                st.metric(
+                    label="Adjusted Annual Premium", 
+                    value=f"{val_annual:.2f} {currency_symbol}/yr", 
+                    delta=f"{get_d_annual:.2f} {currency_symbol}/yr", 
+                    delta_color="inverse"
+                )
+                st.metric(
+                    label="Adjusted Monthly Premium", 
+                    value=f"{val_monthly:.2f} {currency_symbol}/mo", 
+                    delta=f"{get_d_monthly:.2f} {currency_symbol}/mo", 
