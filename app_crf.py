@@ -92,8 +92,6 @@ if uploaded_file is not None:
         
         if manual_mode:
             st.markdown("**🎯 Координатная панель прицеливания (двойной ползунок):**")
-            
-            # Стабильный нативный блок управления во всю ширину картинки без конфликтов iframe
             cx = st.slider("Сдвиг прицела по ГОРИЗОНТАЛИ (X)", 0, w - 1, int(w * 0.5), step=1)
             cy = st.slider("Сдвиг прицела по ВЕРТИКАЛИ (Y)", 0, h - 1, int(h * 0.65), step=1)
             
@@ -137,7 +135,6 @@ if uploaded_file is not None:
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
-                # Огромный трехцветный прицел высокой видимости (увеличен в 2 раза)
                 cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
                 cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
                 cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
@@ -147,17 +144,23 @@ if uploaded_file is not None:
                 
             st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    # --- МОНОЛИТНЫЙ ЗАЩИЩЕННЫЙ РАСЧЕТ И ПОЛНЫЙ ВЫВОД ПРАВОЙ КОЛОНКИ ---
+    # --- ЗАЩИЩЕННЫЙ РАСЧЕТ И ОТРИСОВКА ПРАВОЙ КОЛОНКИ ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
-        pixel_bgr = np.uint8([[list(dominant_bgr)]])
+        
+        # Безопасное извлечение каналов B, G, R по плоским индексам массива
+        b_channel = int(dominant_bgr.item(0))
+        g_channel = int(dominant_bgr.item(1))
+        r_channel = int(dominant_bgr.item(2))
+        
+        pixel_bgr = np.uint8([[[b_channel, g_channel, r_channel]]])
         pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
         pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
         
         lab_matrix = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab)
-        val_L = float(lab_matrix.item(0, 0, 0))
-        val_a = float(lab_matrix.item(0, 0, 1))
-        val_b = float(lab_matrix.item(0, 0, 2))
+        val_L = float(lab_matrix.item(0))
+        val_a = float(lab_matrix.item(1))
+        val_b = float(lab_matrix.item(2))
         
         bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
         bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
@@ -185,12 +188,7 @@ if uploaded_file is not None:
         txt_delta_a = f"{da:.2f} {currency_symbol}/yr"
         txt_monthly = f"{vm:.2f} {currency_symbol}/mo"
         txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
-        
-        r_val = int(pixel_rgb.item(0, 0, 0))
-        g_val = int(pixel_rgb.item(0, 0, 1))
-        b_val = int(pixel_rgb.item(0, 0, 2))
 
-        # Вывод финансового блока происходит строго после завершения всех расчетов
         with sidebar_calc_space.container():
             st.write("**🧮 Live Premium Calculation**")
             st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
@@ -206,3 +204,5 @@ if uploaded_file is not None:
             st.write(f"**Current Visibility Status:** {status_text}")
             st.markdown("---")
             
+            # --- ИСПРАВЛЕНО: Индикатор перенесен в самый верх аналитики (сразу под статус риска) ---
+            st.write(f"**Detected Car Body Color (RGB):** {r_channel}, {g_channel}, {b_channel}")
