@@ -166,7 +166,6 @@ if uploaded_file is not None:
         bg_a = float(bg_lab_matrix.item(0, 0, 1))
         bg_b = float(bg_lab_matrix.item(0, 0, 2))
         
-        # Защита математических функций от вылетов (добавлено микросмещение 1e-5)
         delta_L = float(abs(val_L - bg_L))
         delta_ab = float(np.sqrt(max(0.0, (val_a - bg_a)**2 + (val_b - bg_b)**2)) + 1e-5)
         ivk_value = float(np.sqrt(max(0.0, (val_L - bg_L)**2 + (val_a - bg_a)**2 + (val_b - bg_b)**2)) + 1e-5)
@@ -207,4 +206,6 @@ if uploaded_file is not None:
             m1, m2 = st.columns(2)
             m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
             m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
+            
+            st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
             
