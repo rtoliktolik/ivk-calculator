@@ -175,7 +175,7 @@ if uploaded_file is not None:
                 mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                 mean_bgr = cv2.mean(img, mask=mask_uint8)
                 
-                # Извлекаем каналы строго по их правильным индексам
+                # ИСПРАВЛЕНО: Точне вилучення каналів BGR за індексами кортежу mean_bgr
                 b_val = int(np.round(mean_bgr[0]))
                 g_val = int(np.round(mean_bgr[1]))
                 r_val = int(np.round(mean_bgr[2]))
@@ -220,4 +220,4 @@ if uploaded_file is not None:
             cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
             
-        # ИСПРАВЛЕНО: Ширина картинки зафиксирована на width=550 для компактности интерфейса
+        # Компактне зображення автомобіля з шириною width=550
