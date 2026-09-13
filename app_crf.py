@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 import os
+import matplotlib.pyplot as plt
 
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
 
@@ -32,7 +33,7 @@ def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
             group_span = db_maxs[i] - db_mins[i]
             overlap_span = overlap_max - overlap_min
             ratio = overlap_span / group_span if group_span > 0 else 1.0
-            cars_in_sample = int(db_counts[i] * ratio)
+            cars_in_sample = int(group_counts * ratio) if 'group_counts' in locals() else int(db_counts[i] * ratio)
             if cars_in_sample > 0:
                 total_cars_in_cloud += cars_in_sample
                 matched_groups.append(db_names[i])
@@ -150,18 +151,16 @@ if uploaded_file is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         pixel_bgr = np.uint8([[list(dominant_bgr)]])
         pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
-        pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
         
-        lab_matrix = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab)
+        lab_matrix = cv2.cvtColor(pixel_rgb.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
         val_L = float(lab_matrix.item(0, 0, 0))
         val_a = float(lab_matrix.item(0, 0, 1))
         val_b = float(lab_matrix.item(0, 0, 2))
         
         bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
         bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
-        bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
         
-        bg_lab_matrix = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab)
+        bg_lab_matrix = cv2.cvtColor(bg_rgb.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
         bg_L = float(bg_lab_matrix.item(0, 0, 0))
         bg_a = float(bg_lab_matrix.item(0, 0, 1))
         bg_b = float(bg_lab_matrix.item(0, 0, 2))
@@ -206,6 +205,4 @@ if uploaded_file is not None:
             m1, m2 = st.columns(2)
             m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
             m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
-            
-            st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
             
