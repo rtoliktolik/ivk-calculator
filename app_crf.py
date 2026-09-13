@@ -200,5 +200,4 @@ if uploaded_file is not None:
             m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
             m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
             
-            st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
-            
+            # --- ПЕРЕНЕСЕНО ВЫШЕ ДЛЯ ИСКЛЮЧЕНИЯ УКАТЫВАНИЯ ВНИЗ ---
