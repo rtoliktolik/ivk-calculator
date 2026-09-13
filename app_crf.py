@@ -75,7 +75,7 @@ db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Insurance Profile")
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
-base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium:", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
+base_premium_annual = st.sidebar.number_input(label="Base Annual Premium:", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
 sidebar_calc_space = st.sidebar.empty()
 
@@ -167,7 +167,6 @@ if uploaded_file is not None:
             db_res = simulate_database_lookup(ivk_value, db_tolerance)
             predicted_crf = predict_crf_by_function(ivk_value)
             
-            # --- ПОДГОТОВКА СТРОК ДЛЯ БОКОВОЙ ПАНЕЛИ (ЗАЩИТА ОТ СРЕЗАНИЯ) ---
             bm = float(base_premium_annual / 12.0)
             va = float(base_premium_annual * predicted_crf)
             vm = float(va / 12.0)
@@ -201,3 +200,5 @@ if uploaded_file is not None:
             m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
             m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
             
+            st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
+            pure_color_block = np.zeros((60, 400, 3), dtype=np.uint8)
