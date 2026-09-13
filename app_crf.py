@@ -18,10 +18,10 @@ def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
         {"name": "Grey", "count": 3597270, "ivk_min": 0.0, "ivk_max": 25.0},
         {"name": "Black", "count": 2634864, "ivk_min": 25.0, "ivk_max": 42.0},
         {"name": "Blue", "count": 1382228, "ivk_min": 42.0, "ivk_max": 48.0},
-        {"name": "Others", "count": 772997, "ivk_min": 48.0, "ivk_max": 52.0},
-        {"name": "Red", "count": 654054, "ivk_min": 52.0, "ivk_max": 57.0},
+        {"name": "Others", "count": 772997,  "ivk_min": 48.0, "ivk_max": 52.0},
+        {"name": "Red", "count": 654054,  "ivk_min": 52.0, "ivk_max": 57.0},
         {"name": "White", "count": 1639041, "ivk_min": 57.0, "ivk_max": 65.0},
-        {"name": "Yellow", "count": 96277, "ivk_min": 65.0, "ivk_max": 150.0},
+        {"name": "Yellow", "count": 96277,   "ivk_min": 65.0, "ivk_max": 150.0},
     ]
     ivk_min = max(0.0, target_ivk - tolerance)
     ivk_max = target_ivk + tolerance
@@ -95,17 +95,14 @@ if uploaded_file is not None:
         manual_mode = st.checkbox("🎯 Enable manual target correction")
         
         if manual_mode:
-            # Слайдер Х располагается горизонтально ровно по длине всей картинки НАД картинкой
+            # Слайдеры НАД картинкой
             cx = st.slider("Horizontal Position (X Target)", 0, w - 1, int(w * 0.5), step=1)
-            
-            # Слайдер Y располагается горизонтально ниже (для стабильности в Streamlit), 
-            # но его значения гарантированно попадают в рамки изображения
             cy = st.slider("Vertical Position (Y Target)", 0, h - 1, int(h * 0.65), step=1)
             
-            # Строгая защита от выхода прицела за границы пикселей матрицы
             cx = max(0, min(w - 1, int(cx)))
             cy = max(0, min(h - 1, int(cy)))
             
+            # Стабильное формирование маски региона замера (20х20 пикселей)
             x1, y1 = max(0, cx - 10), max(0, cy - 10)
             x2, y2 = min(w, cx + 10), min(h, cy + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
@@ -143,10 +140,10 @@ if uploaded_file is not None:
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
-                # Крупный полицветный прицел высокой видимости
-                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 45, 5) 
-                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 35, 3)     
-                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 15, 3) 
+                # Изменение: Все маркеры увеличены ровно в 2 раза для максимальной видимости
+                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
+                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
+                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
             else:
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
@@ -203,4 +200,8 @@ if uploaded_file is not None:
             r_val = int(pixel_rgb.item(0, 0, 0))
             g_val = int(pixel_rgb.item(0, 0, 1))
             b_val = int(pixel_rgb.item(0, 0, 2))
+            
+            st.subheader("📊 Express Analysis Results")
+            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
+            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
             
