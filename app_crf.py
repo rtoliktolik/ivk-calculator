@@ -165,16 +165,21 @@ if uploaded_file is not None:
             pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
             
             pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
-            pixel_lab = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
+            
+            # Безпечне вилучення значень LAB через ітератор (захист від зникнення дужок)
+            lab_array = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
+            val_L, val_a, val_b = float(lab_array[0]), float(lab_array[1]), float(lab_array[2])
             
             bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
             bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
             bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
-            bg_lab = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
             
-            delta_L = float(abs(float(pixel_lab[0]) - float(bg_lab[0])))
-            delta_ab = float(np.linalg.norm(pixel_lab[1:] - bg_lab[1:]))
-            ivk_value = float(np.linalg.norm(pixel_lab - bg_lab))
+            bg_lab_array = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab).flatten()
+            bg_L, bg_a, bg_b = float(bg_lab_array[0]), float(bg_lab_array[1]), float(bg_lab_array[2])
+            
+            delta_L = float(abs(val_L - bg_L))
+            delta_ab = float(np.sqrt((val_a - bg_a)**2 + (val_b - bg_b)**2))
+            ivk_value = float(np.sqrt((val_L - bg_L)**2 + (val_a - bg_a)**2 + (val_b - bg_b)**2))
             
             db_res = simulate_database_lookup(ivk_value, db_tolerance)
             predicted_crf = predict_crf_by_function(ivk_value)
@@ -196,9 +201,3 @@ if uploaded_file is not None:
                     delta_color="inverse"
                 )
                 st.metric(
-                    label="Adjusted Monthly Premium", 
-                    value=f"{val_monthly:.2f} {currency_symbol}/mo", 
-                    delta=f"{get_d_monthly:.2f} {currency_symbol}/mo", 
-                    delta_color="inverse"
-                )
-            
