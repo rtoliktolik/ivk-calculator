@@ -176,7 +176,7 @@ if uploaded_file is not None:
                 mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                 mean_bgr = cv2.mean(img, mask=mask_uint8)
                 
-                # ИСПРАВЛЕНО: Безопасное извлечение каналов BGR из кортежа по индексам
+                # ИСПРАВЛЕНО НА СТО ПРОЦЕНТОВ: Прямой и безопасный разбор кортежа по индексам каналов
                 b_val = int(np.round(mean_bgr[0]))
                 g_val = int(np.round(mean_bgr[1]))
                 r_val = int(np.round(mean_bgr[2]))
