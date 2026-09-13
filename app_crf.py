@@ -152,7 +152,6 @@ if uploaded_file is not None:
 
     # --- НАДЕЖНЫЙ СТАБИЛЬНЫЙ МНОГОПОТОЧНЫЙ РАСЧЕТ ---
     if raw_dominant_color is not None:
-        # ФИКС ТИПОВ ДАННЫХ: Принудительное округление медианы YOLO до uint8 перед получением каналов
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         
         b_channel = int(dominant_bgr.item(0))
@@ -207,3 +206,6 @@ if uploaded_file is not None:
             st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
             
             status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
+            st.write(f"**Current Visibility Status:** {status_text}")
+            st.markdown("---")
+            
