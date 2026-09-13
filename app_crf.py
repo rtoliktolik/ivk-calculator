@@ -88,18 +88,15 @@ if uploaded_file is not None:
     h, w, _ = img.shape
     
     col_left_img, col_right_data = st.columns(2)
-    dominant_bgr = None
+    raw_dominant_color = None
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
     with col_left_img:
         manual_mode = st.checkbox("🎯 Enable manual target correction")
         
         if manual_mode:
-            # Слайдер Х строго над картинкой
             cx = st.slider("Horizontal Position (X Target)", 0, w, int(w / 2), step=2)
-            
-            # Пропорциональная сетка: узкая колонка для вертикального ползунка, широкая для фото
-            slider_layout_col1, slider_layout_col2 = st.columns([1, 15])
+            slider_layout_col1, slider_layout_col2 = st.columns([1, 9])
             
             with slider_layout_col1:
                 cy = st.slider("Y Position", 0, h, int(h / 2), step=2, label_visibility="collapsed")
@@ -107,7 +104,7 @@ if uploaded_file is not None:
             x1, y1 = max(0, cx - 10), max(0, cy - 10)
             x2, y2 = min(w, cx + 10), min(h, cy + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
-            dominant_bgr = img[cy, cx]
+            raw_dominant_color = img[cy, cx]
         else:
             with st.spinner("AI is isolating clean paintwork..."):
                 model = YOLO("yolov8n-seg.pt")
@@ -131,19 +128,16 @@ if uploaded_file is not None:
                     car_pixels_bgr = img[clean_paint_mask == 1]
                     if len(car_pixels_bgr) > 0:
                         final_calculated_mask[clean_paint_mask == 1] = 1
-                        dominant_bgr = np.median(car_pixels_bgr, axis=0)
+                        raw_dominant_color = np.median(car_pixels_bgr, axis=0)
                 else:
                     st.error("❌ AI could not find a car. Please enable manual target correction.")
 
-        # Отрисовка изображения с прицелом/контуром
-        if dominant_bgr is not None:
-            dominant_bgr = np.array(dominant_bgr, dtype=np.uint8)
+        if raw_dominant_color is not None:
             visual_img = img.copy()
             ch_p = create_checkerboard_pattern(w, h)
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
-                # Контрастный составной полицветный прицел
                 cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 45, 5) 
                 cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 35, 3)     
                 cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 15, 3) 
@@ -154,47 +148,57 @@ if uploaded_file is not None:
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
                 st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    # --- НЕЗАВИСИМАЯ ОТ РЕЖИМА ПРАВАЯ КОЛОНКА ---
-    with col_right_data:
-        if dominant_bgr is not None:
-            pixel_bgr = np.uint8([[list(dominant_bgr)]])
-            pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
-            pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
-            
-            lab_matrix = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab)
-            val_L = float(lab_matrix.item(0, 0, 0))
-            val_a = float(lab_matrix.item(0, 0, 1))
-            val_b = float(lab_matrix.item(0, 0, 2))
-            
-            bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
-            bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
-            bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
-            
-            bg_lab_matrix = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab)
-            bg_L = float(bg_lab_matrix.item(0, 0, 0))
-            bg_a = float(bg_lab_matrix.item(0, 0, 1))
-            bg_b = float(bg_lab_matrix.item(0, 0, 2))
-            
-            delta_L = float(abs(val_L - bg_L))
-            delta_ab = float(np.sqrt((val_a - bg_a)**2 + (val_b - bg_b)**2))
-            ivk_value = float(np.sqrt((val_L - bg_L)**2 + (val_a - bg_a)**2 + (val_b - bg_b)**2))
-            
-            db_res = simulate_database_lookup(ivk_value, db_tolerance)
-            predicted_crf = predict_crf_by_function(ivk_value)
-            
-            # Расчет финансовых показателей
-            bm = float(base_premium_annual / 12.0)
-            va = float(base_premium_annual * predicted_crf)
-            vm = float(va / 12.0)
-            da = float(va - base_premium_annual)
-            dm = float(vm - bm)
-            
-            txt_annual = f"{va:.2f} {currency_symbol}/yr"
-            txt_delta_a = f"{da:.2f} {currency_symbol}/yr"
-            txt_monthly = f"{vm:.2f} {currency_symbol}/mo"
-            txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
+    # --- СТАБИЛЬНЫЙ РАСЧЕТ И ОТРИСОВКА ПРАВОЙ КОЛОНКИ ---
+    if raw_dominant_color is not None:
+        # Гарантированное приведение медианы к целочисленному массиву uint8 для OpenCV
+        dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
+        
+        pixel_bgr = np.uint8([[list(dominant_bgr)]])
+        pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
+        pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
+        
+        lab_matrix = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab)
+        val_L = float(lab_matrix.item(0, 0, 0))
+        val_a = float(lab_matrix.item(0, 0, 1))
+        val_b = float(lab_matrix.item(0, 0, 2))
+        
+        bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
+        bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
+        bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
+        
+        bg_lab_matrix = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab)
+        bg_L = float(bg_lab_matrix.item(0, 0, 0))
+        bg_a = float(bg_lab_matrix.item(0, 0, 1))
+        bg_b = float(bg_lab_matrix.item(0, 0, 2))
+        
+        delta_L = float(abs(val_L - bg_L))
+        delta_ab = float(np.sqrt((val_a - bg_a)**2 + (val_b - bg_b)**2))
+        ivk_value = float(np.sqrt((val_L - bg_L)**2 + (val_a - bg_a)**2 + (val_b - bg_b)**2))
+        
+        db_res = simulate_database_lookup(ivk_value, db_tolerance)
+        predicted_crf = predict_crf_by_function(ivk_value)
+        
+        bm = float(base_premium_annual / 12.0)
+        va = float(base_premium_annual * predicted_crf)
+        vm = float(va / 12.0)
+        da = float(va - base_premium_annual)
+        dm = float(vm - bm)
+        
+        txt_annual = f"{va:.2f} {currency_symbol}/yr"
+        txt_delta_a = f"{da:.2f} {currency_symbol}/yr"
+        txt_monthly = f"{vm:.2f} {currency_symbol}/mo"
+        txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
 
-            with sidebar_calc_space.container():
-                st.write("**🧮 Live Premium Calculation**")
-                st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
-                st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
+        with sidebar_calc_space.container():
+            st.write("**🧮 Live Premium Calculation**")
+            st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
+            st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
+            st.metric(label="Adjusted Monthly Premium", value=txt_monthly, delta=txt_delta_m, delta_color="inverse")
+        
+        with col_right_data:
+            r_val = int(pixel_rgb.item(0, 0, 0))
+            g_val = int(pixel_rgb.item(0, 0, 1))
+            b_val = int(pixel_rgb.item(0, 0, 2))
+            
+            st.subheader("📊 Express Analysis Results")
+            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
