@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 import os
-import streamlit.components.v1 as components
 
 # Fixed reference road background constant (Asphalt)
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
@@ -11,7 +10,6 @@ CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
 def predict_crf_by_function(target_ivk: float) -> float:
     xp = [12.5, 33.5, 47.0, 58.5, 80.0]
     fp = [1.19, 1.03, 1.00, 0.975, 0.93]
-    # Гарантируем возврат чистого нативного float без типов NumPy
     res = np.interp(float(target_ivk), xp, fp)
     return float(np.round(float(res), 2))
 
@@ -55,10 +53,20 @@ def create_checkerboard_pattern(width, height, square_size=15):
 # --- ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА ---
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
+# CSS для принудительного разворота слайдера в честный вертикальный вид
 st.markdown("""
     <style>
     [data-testid="stMetricValue"] { font-size: 3.5rem !important; font-weight: bold !important; }
     [data-testid="stMetricLabel"] { font-size: 1.3rem !important; }
+    
+    /* Стилизация вертикального контейнера слайдера */
+    .vertical-slider-container div[data-testid="stSlider"] > div {
+        writing-mode: vertical-lr !important;
+        direction: rtl !important;
+        height: 380px !important;
+        padding-left: 20px !important;
+        margin: 0 auto !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -97,45 +105,23 @@ if uploaded_file is not None:
         manual_mode = st.checkbox("🎯 Enable manual target correction")
         
         if manual_mode:
-            # Инициализация переменных координат в сессии
-            if "target_cx" not in st.session_state:
-                st.session_state.target_cx = int(w / 2)
-            if "target_cy" not in st.session_state:
-                st.session_state.target_cy = int(h / 2)
-                
-            # Чтение параметров из адресной строки для связи с HTML-слайдером Y
-            query_params = st.query_params
-            if "html_cy" in query_params:
-                st.session_state.target_cy = int(query_params["html_cy"])
+            # Горизонтальный слайдер строго над изображением
+            cx = st.slider("Horizontal Position (X Target)", 0, w, int(w / 2), step=2)
             
-            # Слайдер Х строго горизонтально над изображением
-            cx = st.slider("Horizontal Position (X Target)", 0, w, st.session_state.target_cx, step=2)
-            st.session_state.target_cx = cx
-            
-            # Сетка для честного вертикального слайдера слева и картинки справа
-            slider_layout_col1, slider_layout_col2 = st.columns([1, 12])
+            # Разметка под вертикальный ползунок (1 часть ширины) и картинку (11 частей ширины)
+            slider_layout_col1, slider_layout_col2 = st.columns([1, 11])
             
             with slider_layout_col1:
-                st.write("<div style='text-align:center; font-weight:bold; font-size:12px; margin-bottom:5px;'>Y</div>", unsafe_allow_html=True)
-                # HTML5 Вертикальный ползунок, занимающий всю высоту рамки изображения
-                html_slider = f"""
-                <body style='margin:0; padding:0; background:transparent;'>
-                <input type='range' min='0' max='{h}' value='{st.session_state.target_cy}' step='2' 
-                style='transform: rotate(180deg); writing-mode: bt-lr; appearance: slider-vertical; width:100%; height:320px; cursor:pointer;'
-                onchange='parent.window.location.search = "?html_cy=" + this.value;'>
-                </body>
-                """
-                components.html(html_slider, height=340)
+                # Нативный слайдер Streamlit, развернутый вертикально через CSS класс
+                st.write("<div style='text-align:center; font-weight:bold; font-size:14px;'>Y</div>", unsafe_allow_html=True)
+                st.markdown('<div class="vertical-slider-container">', unsafe_allow_html=True)
+                cy = st.slider("Vertical Position (Y Target)", 0, h, int(h / 2), step=2, label_visibility="collapsed")
+                st.markdown('</div>', unsafe_allow_html=True)
             
-            cy = st.session_state.target_cy
-            # Инвертируем Y для соответствия направления системы координат OpenCV (ноль сверху)
-            cy_corrected = h - cy
-            cy_corrected = max(0, min(h - 1, cy_corrected))
-            
-            x1, y1 = max(0, cx - 10), max(0, cy_corrected - 10)
-            x2, y2 = min(w, cx + 10), min(h, cy_corrected + 10)
+            x1, y1 = max(0, cx - 10), max(0, cy - 10)
+            x2, y2 = min(w, cx + 10), min(h, cy + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
-            raw_dominant_color = img[cy_corrected, cx]
+            raw_dominant_color = img[cy, cx]
         else:
             with st.spinner("AI is isolating clean paintwork..."):
                 model = YOLO("yolov8n-seg.pt")
@@ -169,10 +155,10 @@ if uploaded_file is not None:
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
-                # Рисуем полицветный прицел по скорректированной координате Y
-                cv2.drawMarker(visual_img, (cx, cy_corrected), (255, 255, 255), cv2.MARKER_CROSS, 45, 5) 
-                cv2.drawMarker(visual_img, (cx, cy_corrected), (255, 0, 0), cv2.MARKER_CROSS, 35, 3)     
-                cv2.drawMarker(visual_img, (cx, cy_corrected), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 15, 3) 
+                # Контрастный составной полицветный прицел (реагирует мгновенно)
+                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 45, 5) 
+                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 35, 3)     
+                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 15, 3) 
                 with slider_layout_col2:
                     st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
             else:
@@ -195,3 +181,23 @@ if uploaded_file is not None:
         
         bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
         bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
+        bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
+        
+        bg_lab_matrix = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab)
+        bg_L = float(bg_lab_matrix.item(0, 0, 0))
+        bg_a = float(bg_lab_matrix.item(0, 0, 1))
+        bg_b = float(bg_lab_matrix.item(0, 0, 2))
+        
+        delta_L = float(abs(val_L - bg_L))
+        delta_ab = float(np.sqrt((val_a - bg_a)**2 + (val_b - bg_b)**2))
+        ivk_value = float(np.sqrt((val_L - bg_L)**2 + (val_a - bg_a)**2 + (val_b - bg_b)**2))
+        
+        db_res = simulate_database_lookup(ivk_value, db_tolerance)
+        predicted_crf = float(predict_crf_by_function(ivk_value))
+        
+        bm = float(base_premium_annual / 12.0)
+        va = float(base_premium_annual * predicted_crf)
+        vm = float(va / 12.0)
+        da = float(va - base_premium_annual)
+        dm = float(vm - bm)
+        
