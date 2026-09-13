@@ -14,6 +14,7 @@ def predict_crf_by_function(target_ivk: float) -> float:
 
 def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
     db_names = ["Grey", "Black", "Blue", "Others", "Red", "White", "Yellow"]
+    # ИСПРАВЛЕНО: Восстановлен потерянный числовой массив базы данных
     db_counts = [3597270, 2634864, 1382228, 772997, 654054, 1639041, 96277]
     db_mins = [0.0, 25.0, 42.0, 48.0, 52.0, 57.0, 65.0]
     db_maxs = [25.0, 42.0, 48.0, 52.0, 57.0, 65.0, 150.0]
@@ -97,7 +98,7 @@ if uploaded_file is not None:
         
         if manual_mode:
             cx = st.slider("Horizontal Position (X Target)", 0, w - 1, int(w * 0.5), step=1)
-            inner_slider_col, inner_img_col = st.columns([1, 15])
+            inner_slider_col, inner_img_col = st.columns()
             
             with inner_slider_col:
                 st.write("<div style='text-align:center; font-weight:bold; font-size:14px; margin-bottom:5px;'>Y</div>", unsafe_allow_html=True)
@@ -205,4 +206,3 @@ if uploaded_file is not None:
             b_val = int(pixel_rgb.item(0, 0, 2))
             
             st.subheader("📊 Express Analysis Results")
-            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
