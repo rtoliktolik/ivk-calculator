@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 import os
-import matplotlib.pyplot as plt
 
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
 
@@ -17,7 +16,6 @@ def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
     db_names = ["Grey", "Black", "Blue", "Others", "Red", "White", "Yellow"]
     counts_str = ["3597270", "2634864", "1382228", "772997", "654054", "1639041", "96277"]
     db_counts = [int(x) for x in counts_str]
-    
     db_mins = [0.0, 25.0, 42.0, 48.0, 52.0, 57.0, 65.0]
     db_maxs = [25.0, 42.0, 48.0, 52.0, 57.0, 65.0, 150.0]
     
@@ -33,7 +31,7 @@ def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
             group_span = db_maxs[i] - db_mins[i]
             overlap_span = overlap_max - overlap_min
             ratio = overlap_span / group_span if group_span > 0 else 1.0
-            cars_in_sample = int(group_counts * ratio) if 'group_counts' in locals() else int(db_counts[i] * ratio)
+            cars_in_sample = int(db_counts[i] * ratio)
             if cars_in_sample > 0:
                 total_cars_in_cloud += cars_in_sample
                 matched_groups.append(db_names[i])
@@ -50,7 +48,6 @@ def create_checkerboard_pattern(width, height, square_size=15):
     base[square_size:, 0:square_size] = (200, 200, 200)
     return np.tile(base, (int(np.ceil(height / (square_size * 2))), int(np.ceil(width / (square_size * 2))), 1))[0:height, 0:width]
 
-# --- ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА ---
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
 st.markdown("""
@@ -93,17 +90,42 @@ if uploaded_file is not None:
         manual_mode = st.checkbox("🎯 Enable manual target correction")
         
         if manual_mode:
-            st.markdown("**🎯 Координатная панель прицеливания:**")
-            cx = st.slider("Сдвиг прицела по ГОРИЗОНТАЛИ (X)", 0, w - 1, int(w * 0.5), step=1)
-            cy = st.slider("Сдвиг прицела по ВЕРТИКАЛИ (Y)", 0, h - 1, int(h * 0.65), step=1)
+            # Слайдер X строго НАД картинкой во всю её длину
+            cx = st.slider("Horizontal Position (X Target)", 0, w - 1, int(w * 0.5), step=1)
+            
+            # Разметка под вертикальный ползунок Y слева от рамки изображения
+            # Используем встроенный в Streamlit HTML-компонент, который работает стабильно
+            inner_slider_col, inner_img_col = st.columns([1, 24])
+            
+            with inner_slider_col:
+                st.write("<div style='text-align:center; font-weight:bold; font-size:12px;'>Y</div>", unsafe_allow_html=True)
+                # Надежный HTML5 слайдер, высота которого идеально привязана к высоте сетки
+                import streamlit.components.v1 as components
+                if "html_cy" not in st.session_state:
+                    st.session_state.html_cy = int(h * 0.65)
+                
+                query_params = st.query_params
+                if "val_y" in query_params:
+                    st.session_state.html_cy = int(query_params["val_y"])
+                
+                html_code = f"""
+                <body style="margin:0; padding:0; background:transparent;">
+                <input type="range" min="0" max="{h-1}" value="{st.session_state.html_cy}" step="1"
+                style="transform: rotate(180deg); writing-mode: bt-lr; appearance: slider-vertical; width:100%; height:320px; cursor:pointer;"
+                onchange="parent.window.location.search = '?val_y=' + this.value;">
+                </body>
+                """
+                components.html(html_code, height=340)
             
             cx = max(0, min(w - 1, int(cx)))
-            cy = max(0, min(h - 1, int(cy)))
+            cy_input = st.session_state.html_cy
+            cy_corrected = (h - 1) - cy_input
+            cy_corrected = max(0, min(h - 1, int(cy_corrected)))
             
-            x1, y1 = max(0, cx - 10), max(0, cy - 10)
-            x2, y2 = min(w, cx + 10), min(h, cy + 10)
+            x1, y1 = max(0, cx - 10), max(0, cy_corrected - 10)
+            x2, y2 = min(w, cx + 10), min(h, cy_corrected + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
-            raw_dominant_color = img[cy, cx]
+            raw_dominant_color = img[cy_corrected, cx]
         else:
             with st.spinner("AI is isolating clean paintwork..."):
                 model = YOLO("yolov8n-seg.pt")
@@ -137,30 +159,33 @@ if uploaded_file is not None:
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
-                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
-                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
-                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
+                cv2.drawMarker(visual_img, (cx, cy_corrected), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
+                cv2.drawMarker(visual_img, (cx, cy_corrected), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
+                cv2.drawMarker(visual_img, (cx, cy_corrected), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
+                with inner_img_col:
+                    st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
             else:
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-                
-            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+                st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    # --- НАДЕЖНЫЙ ЗАЩИЩЕННЫЙ РАСЧЕТ И ПОЛНЫЙ ВЫВОД ПРАВОЙ КОЛОНКИ ---
+    # --- ИСПРАВЛЕННЫЙ ПОРЯДОК: ВЫЧИСЛЕНИЯ И ВЫВОД ПРАВОЙ КОЛОНКИ ВЫПОЛНЯЮТСЯ В САМУЮ ПОСЛЕДНЮЮ ОЧЕРЕДЬ ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         pixel_bgr = np.uint8([[list(dominant_bgr)]])
         pixel_rgb = cv2.cvtColor(pixel_bgr, cv2.COLOR_BGR2RGB)
+        pixel_rgb_f32 = pixel_rgb.astype(np.float32) / 255.0
         
-        lab_matrix = cv2.cvtColor(pixel_rgb.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
+        lab_matrix = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab)
         val_L = float(lab_matrix.item(0, 0, 0))
         val_a = float(lab_matrix.item(0, 0, 1))
         val_b = float(lab_matrix.item(0, 0, 2))
         
         bg_bgr = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
         bg_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
+        bg_rgb_f32 = bg_rgb.astype(np.float32) / 255.0
         
-        bg_lab_matrix = cv2.cvtColor(bg_rgb.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
+        bg_lab_matrix = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab)
         bg_L = float(bg_lab_matrix.item(0, 0, 0))
         bg_a = float(bg_lab_matrix.item(0, 0, 1))
         bg_b = float(bg_lab_matrix.item(0, 0, 2))
@@ -174,35 +199,3 @@ if uploaded_file is not None:
         
         bm = float(base_premium_annual / 12.0)
         va = float(base_premium_annual * predicted_crf)
-        vm = float(va / 12.0)
-        da = float(va - base_premium_annual)
-        dm = float(vm - bm)
-        
-        txt_annual = f"{va:.2f} {currency_symbol}/yr"
-        txt_delta_a = f"{da:.2f} {currency_symbol}/yr"
-        txt_monthly = f"{vm:.2f} {currency_symbol}/mo"
-        txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
-
-        with sidebar_calc_space.container():
-            st.write("**🧮 Live Premium Calculation**")
-            st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
-            st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
-            st.metric(label="Adjusted Monthly Premium", value=txt_monthly, delta=txt_delta_m, delta_color="inverse")
-        
-        with col_right_data:
-            r_val = int(pixel_rgb.item(0, 0, 0))
-            g_val = int(pixel_rgb.item(0, 0, 1))
-            b_val = int(pixel_rgb.item(0, 0, 2))
-            
-            st.subheader("📊 Express Analysis Results")
-            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
-            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-            
-            status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
-            st.write(f"**Current Visibility Status:** {status_text}")
-            st.markdown("---")
-            
-            m1, m2 = st.columns(2)
-            m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
-            m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
-            
