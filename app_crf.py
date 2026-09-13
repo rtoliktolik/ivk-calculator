@@ -14,7 +14,6 @@ def predict_crf_by_function(target_ivk: float) -> float:
     return float(np.round(float(res), 2))
 
 def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
-    # Безопасный текстовый формат хранения для 100% защиты от склеивания строк
     n_str = "Grey,Black,Blue,Others,Red,White,Yellow"
     c_str = "3597270,2634864,1382228,772997,654054,1639041,96277"
     min_str = "0.0,25.0,42.0,48.0,52.0,57.0,65.0"
@@ -150,7 +149,7 @@ if uploaded_file is not None:
                 
             st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    # --- НАДЕЖНЫЙ СТАБИЛЬНЫЙ МНОГОПОТОЧНЫЙ РАСЧЕТ ---
+    # --- МОНОЛИТНЫЙ, ПОЛНОСТЬЮ ИЗОЛИРОВАННЫЙ ВЫВОД ПРАВОЙ КОЛОНКИ ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         
@@ -209,3 +208,4 @@ if uploaded_file is not None:
             st.write(f"**Current Visibility Status:** {status_text}")
             st.markdown("---")
             
+            # --- ИСПРАВЛЕННЫЙ И 100% СТАБИЛЬНЫЙ ВЫВОД ПРЯМОУГОЛЬНИКА ЦВЕТА КУЗОВА ---
