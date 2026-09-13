@@ -134,31 +134,32 @@ if uploaded_file is not None:
                 else:
                     st.error("❌ AI could not find a car. Please enable manual target correction.")
 
-    # --- МОНОЛИТНЫЙ, СИНХРОННЫЙ И БЕЗОПАСНЫЙ РАСЧЕТ И ВЫВОД ВСЕХ ДАННЫХ СТРОГО В ОДНОМ МЕСТЕ ---
+    # --- АБСОЛЮТНО ИЗОЛИРОВАННЫЙ РАСЧЕТ И ОДНОКРАТНЫЙ ПОЛНЫЙ ВЫВОД ВСЕХ ДАННЫХ ---
     if raw_dominant_color is not None:
-        dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
+        # ПРИНУДИТЕЛЬНАЯ ОЧИСТКА ДАННЫХ: Переводим любые ИИ-объекты (Tensor/Ndarray) в чистые базовые типы Python int
+        color_array = np.array(raw_dominant_color).flatten()
+        b_channel = int(np.round(color_array[0]))
+        g_channel = int(np.round(color_array[1]))
+        r_channel = int(np.round(color_array[2]))
         
-        b_channel = int(dominant_bgr.item(0))
-        g_channel = int(dominant_bgr.item(1))
-        r_channel = int(dominant_bgr.item(2))
-        
+        # Вся дальнейшая математика использует строго изолированные Python-структуры
         pixel_bgr_mat = np.uint8([[[b_channel, g_channel, r_channel]]])
         pixel_rgb_mat = cv2.cvtColor(pixel_bgr_mat, cv2.COLOR_BGR2RGB)
         pixel_rgb_f32 = pixel_rgb_mat.astype(np.float32) / 255.0
         
         lab_matrix = cv2.cvtColor(pixel_rgb_f32, cv2.COLOR_RGB2Lab)
-        val_L = float(lab_matrix.item(0))
-        val_a = float(lab_matrix.item(1))
-        val_b = float(lab_matrix.item(2))
+        val_L = float(lab_matrix[0, 0, 0])
+        val_a = float(lab_matrix[0, 0, 1])
+        val_b = float(lab_matrix[0, 0, 2])
         
-        bg_bgr_mat = np.uint8([[list(CONSTANT_ROAD_BACKGROUND_RGB[::-1])]])
+        bg_bgr_mat = np.uint8([[[int(CONSTANT_ROAD_BACKGROUND_RGB[2]), int(CONSTANT_ROAD_BACKGROUND_RGB[1]), int(CONSTANT_ROAD_BACKGROUND_RGB[0])]]])
         bg_rgb_mat = cv2.cvtColor(bg_bgr_mat, cv2.COLOR_BGR2RGB)
         bg_rgb_f32 = bg_rgb_mat.astype(np.float32) / 255.0
         
         bg_lab_matrix = cv2.cvtColor(bg_rgb_f32, cv2.COLOR_RGB2Lab)
-        bg_L = float(bg_lab_matrix.item(0, 0, 0))
-        bg_a = float(bg_lab_matrix.item(0, 0, 1))
-        bg_b = float(bg_lab_matrix.item(0, 0, 2))
+        bg_L = float(bg_lab_matrix[0, 0, 0])
+        bg_a = float(bg_lab_matrix[0, 0, 1])
+        bg_b = float(bg_lab_matrix[0, 0, 2])
         
         delta_L = float(abs(val_L - bg_L))
         delta_ab = float(np.sqrt(max(0.0, (val_a - bg_a)**2 + (val_b - bg_b)**2)) + 1e-5)
@@ -178,7 +179,7 @@ if uploaded_file is not None:
         txt_monthly = f"{vm:.2f} {currency_symbol}/mo"
         txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
 
-        # 1. Отрисовка изображения кузова в левую колонку
+        # Отрисовка фото-области в левую колонку
         with col_left_img:
             visual_img = img.copy()
             ch_p = create_checkerboard_pattern(w, h)
@@ -192,17 +193,15 @@ if uploaded_file is not None:
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
             st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-        # 2. Отрисовка финансовых премий в сайдбар
+        # Отрисовка сайдбара
         with sidebar_calc_space.container():
             st.write("**🧮 Live Premium Calculation**")
             st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
             st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
             st.metric(label="Adjusted Monthly Premium", value=txt_monthly, delta=txt_delta_m, delta_color="inverse")
         
-        # 3. Полный, непрерывный вывод правой аналитической панели без обрывов
+        # Монолитный вывод аналитической правой панели
         with col_right_data:
             st.subheader("📊 Express Analysis Results")
             st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
             st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-            
-            status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
