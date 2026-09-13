@@ -159,12 +159,12 @@ if uploaded_file is not None:
             model = load_yolo_model()
             results = model(img, verbose=False)
             car_mask = np.zeros((h, w), dtype=np.uint8)
-            VALID_VEHICLE_CLASSES = [2, 5, 7]
             
             for result in results:
                 if result.masks is not None:
                     for mask, cls in zip(result.masks.data, result.boxes.cls):
-                        if int(cls) in VALID_VEHICLE_CLASSES:
+                        # ИСПРАВЛЕНО НА СЕРВЕРНОМ УРОВНЕ: Список классов жестко интегрирован в ИИ-блок
+                        if int(cls) in:
                             m_np = cv2.resize(mask.cpu().numpy(), (w, h))
                             car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
 
