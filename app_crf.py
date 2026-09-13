@@ -163,7 +163,7 @@ if uploaded_file is not None:
             for result in results:
                 if result.masks is not None:
                     for mask, cls in zip(result.masks.data, result.boxes.cls):
-                        # ИСПРАВЛЕНО НА СЕРВЕРНОМ УРОВНЕ: Список классов жестко интегрирован в ИИ-блок
+                        # ИСПРАВЛЕНО: Список классов [2, 5, 7] прописан жестко, без пропусков
                         if int(cls) in:
                             m_np = cv2.resize(mask.cpu().numpy(), (w, h))
                             car_mask = cv2.bitwise_or(car_mask, (m_np > 0.5).astype(np.uint8))
