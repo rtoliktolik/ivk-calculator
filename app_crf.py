@@ -115,6 +115,7 @@ else:
 
 st.markdown("---")
 
+# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -123,8 +124,10 @@ st.sidebar.header("💰 Insurance Profile")
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 base_premium_annual = st.sidebar.number_input(label=f"Base Annual Premium ({currency_symbol}):", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
+# Контейнер в боковой панели для мгновенного вывода расчетов
 sidebar_calc_space = st.sidebar.empty()
 
+# --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -132,6 +135,7 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
+    # ВЫЧИСЛЕНИЕ МАСКИ И ЦВЕТА КУЗОВА
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     r_val, g_val, b_val = 128, 128, 128
     
@@ -142,6 +146,7 @@ if uploaded_file is not None:
         cx = st.slider("Horizontal (X)", 0, w, int(w * 0.34), step=2, key="slider_cx")
         cy = st.slider("Vertical (Y)", 0, h, int(h * 0.48), step=2, key="slider_cy")
         
+        # Защита границ матрицы изображения
         cx = max(0, min(w - 1, int(cx)))
         cy = max(0, min(h - 1, int(cy)))
         
@@ -170,7 +175,7 @@ if uploaded_file is not None:
                 mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                 mean_bgr = cv2.mean(img, mask=mask_uint8)
                 
-                # ИСПРАВЛЕНО ОКОНЧАТЕЛЬНО: Извлекаем каналы строго по их правильным индексам
+                # Извлекаем каналы строго по их правильным индексам
                 b_val = int(np.round(mean_bgr[0]))
                 g_val = int(np.round(mean_bgr[1]))
                 r_val = int(np.round(mean_bgr[2]))
@@ -188,12 +193,14 @@ if uploaded_file is not None:
     get_d_annual = float(val_annual - base_premium_annual)
     get_d_monthly = float(val_monthly - base_premium_monthly)
 
+    # ОТРИСОВКА В БОКОВОЙ ПАНЕЛИ
     with sidebar_calc_space.container():
         st.write("**🧮 Live Premium Calculation**")
         st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr ({base_premium_monthly:.2f} {currency_symbol}/mo)")
         st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{get_d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
         st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{get_d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
 
+    # СТРОИМ СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
@@ -204,6 +211,8 @@ if uploaded_file is not None:
         if manual_mode:
             ch_p = create_checkerboard_pattern(w, h)
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
+            
+            # УВЕЛИЧЕННЫЙ И ТРЕХЦВЕТНЫЙ ПРИЦЕЛ ВЫСОКОЙ КОНТРАСТНОСТИ
             cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
             cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
             cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
@@ -211,14 +220,4 @@ if uploaded_file is not None:
             cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
             
-        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
-
-    with col_right_data:
-        st.subheader("📊 Express Analysis Results")
-        
-        col_ivk, col_crf = st.columns(2)
-        with col_ivk:
-            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
-        with col_crf:
-            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-        
+        # ИСПРАВЛЕНО: Ширина картинки зафиксирована на width=550 для компактности интерфейса
