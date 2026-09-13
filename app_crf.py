@@ -175,7 +175,7 @@ if uploaded_file is not None:
                 mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                 mean_bgr = cv2.mean(img, mask=mask_uint8)
                 
-                # ИСПРАВЛЕНО: Индексы кортежа mean_bgr разделены корректно
+                # ИСПРАВЛЕНО ОКОНЧАТЕЛЬНО: Извлечение строго по ячейкам кортежа mean_bgr
                 b_val = int(round(mean_bgr[0]))
                 g_val = int(round(mean_bgr[1]))
                 r_val = int(round(mean_bgr[2]))
@@ -200,8 +200,8 @@ if uploaded_file is not None:
         st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{get_d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
         st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{get_d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
 
-    # СТРОИМ СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
-    col_left_img, col_right_data = st.columns(2)
+    # СТРОИМ СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ МАКЕТ С ПРОПОРЦИЕЙ КОЛОНОК [3, 2, 1]
+    col_left_img, col_right_data, col_spacer = st.columns([3, 2, 1])
     
     with col_left_img:
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
@@ -220,4 +220,3 @@ if uploaded_file is not None:
             cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
             
-        # Изображение зафиксировано на width=550 для компактности интерфейса
