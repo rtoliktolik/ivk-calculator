@@ -202,4 +202,3 @@ if uploaded_file is not None:
                     delta_color="inverse"
                 )
             
-            # --- ИСПРАВЛЕННЫЕ ИНДЕКСЫ МАССИВА RGB ---
