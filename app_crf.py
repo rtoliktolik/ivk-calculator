@@ -1,21 +1,18 @@
 import streamlit as st
 import cv2
 import numpy as np
-from ultralytics import YOLO
-import os
 
+# Фиксированный фон дороги (Асфальт)
 CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
 
 def predict_crf_by_function(target_ivk: float) -> float:
     xp = [12.5, 33.5, 47.0, 58.5, 80.0]
     fp = [1.19, 1.03, 1.00, 0.975, 0.93]
-    res = np.interp(float(target_ivk), xp, fp)
-    return float(np.round(float(res), 2))
+    return float(np.interp(target_ivk, xp, fp))
 
 def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
     db_names = ["Grey", "Black", "Blue", "Others", "Red", "White", "Yellow"]
-    counts_str = ["3597270", "2634864", "1382228", "772997", "654054", "1639041", "96277"]
-    db_counts = [int(x) for x in counts_str]
+    db_counts = [3597270, 2634864, 1382228, 772997, 654054, 1639041, 96277]
     db_mins = [0.0, 25.0, 42.0, 48.0, 52.0, 57.0, 65.0]
     db_maxs = [25.0, 42.0, 48.0, 52.0, 57.0, 65.0, 150.0]
     
@@ -40,14 +37,6 @@ def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
         return {"total_cars": 0, "groups": ["Unique Shade"]}
     return {"total_cars": total_cars_in_cloud, "groups": matched_groups}
 
-def create_checkerboard_pattern(width, height, square_size=15):
-    base = np.zeros((square_size * 2, square_size * 2, 3), dtype=np.uint8)
-    base[0:square_size, 0:square_size] = (240, 240, 240)
-    base[square_size:, square_size:] = (240, 240, 240)
-    base[0:square_size, square_size:] = (200, 200, 200)
-    base[square_size:, 0:square_size] = (200, 200, 200)
-    return np.tile(base, (int(np.ceil(height / (square_size * 2))), int(np.ceil(width / (square_size * 2))), 1))[0:height, 0:width]
-
 # --- ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА ---
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
@@ -58,14 +47,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-logo_path = "logo.png"
-if os.path.exists(logo_path):
-    st.image(logo_path, width=300)
-else:
-    st.title("FARRATE-X | ANALYTICAL IVK CALCULATOR")
-
+st.title("FARRATE-X | ANALYTICAL IVK CALCULATOR")
 st.markdown("---")
 
+# --- НАСТРОЙКИ В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -74,8 +59,6 @@ st.sidebar.header("💰 Insurance Profile")
 currency_symbol = st.sidebar.selectbox("Select Currency Symbol:", ["€", "$", "£", "¥", "u.e."])
 base_premium_annual = st.sidebar.number_input(label="Base Annual Premium:", min_value=1.0, max_value=1000000.0, value=850.0, step=10.0)
 
-sidebar_calc_space = st.sidebar.empty()
-
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -83,122 +66,81 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
+    # Слайдеры наведения
+    st.markdown("**🎯 Координатная панель прицеливания (двойной ползунок):**")
+    cx = st.slider("Сдвиг прицела по ГОРИЗОНТАЛИ (X)", 0, w - 1, int(w * 0.5), step=1)
+    cy = st.slider("Сдвиг прицела по ВЕРТИКАЛИ (Y)", 0, h - 1, int(h * 0.65), step=1)
+    
+    # Извлечение цвета BGR из выбранной точки
+    pixel_color_bgr = img[cy, cx]
+    b_val, g_val, r_val = int(pixel_color_bgr[0]), int(pixel_color_bgr[1]), int(pixel_color_bgr[2])
+    
+    # Конвертация в LAB для математического расчета контраста
+    pixel_bgr_matrix = np.uint8([[[b_val, g_val, r_val]]])
+    pixel_lab = cv2.cvtColor(pixel_bgr_matrix, cv2.COLOR_BGR2Lab)[0][0]
+    val_L, val_a, val_b = float(pixel_lab[0]), float(pixel_lab[1]), float(pixel_lab[2])
+    
+    # Фон дороги в LAB
+    bg_bgr_matrix = np.uint8([[[CONSTANT_ROAD_BACKGROUND_RGB[2], CONSTANT_ROAD_BACKGROUND_RGB[1], CONSTANT_ROAD_BACKGROUND_RGB[0]]]])
+    bg_lab = cv2.cvtColor(bg_bgr_matrix, cv2.COLOR_BGR2Lab)[0][0]
+    bg_L, bg_a, bg_b = float(bg_lab[0]), float(bg_lab[1]), float(bg_lab[2])
+    
+    # Расчет индексов
+    delta_L = float(abs(val_L - bg_L))
+    delta_ab = float(np.sqrt((val_a - bg_a)**2 + (val_b - bg_b)**2))
+    ivk_value = float(np.sqrt((val_L - bg_L)**2 + (val_a - bg_a)**2 + (val_b - bg_b)**2))
+    
+    predicted_crf = predict_crf_by_function(ivk_value)
+    db_res = simulate_database_lookup(ivk_value, db_tolerance)
+    
+    # Расчет финансовой панели
+    bm = float(base_premium_annual / 12.0)
+    va = float(base_premium_annual * predicted_crf)
+    vm = float(va / 12.0)
+    da = float(va - base_premium_annual)
+    dm = float(vm - bm)
+    
+    # Отрисовка финансового блока в сайдбаре
+    st.sidebar.markdown("---")
+    st.sidebar.write("**🧮 Live Premium Calculation**")
+    st.sidebar.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
+    st.sidebar.metric(label="Adjusted Annual Premium", value=f"{va:.2f} {currency_symbol}/yr", delta=f"{da:.2f} {currency_symbol}/yr", delta_color="inverse")
+    st.sidebar.metric(label="Adjusted Monthly Premium", value=f"{vm:.2f} {currency_symbol}/mo", delta=f"{dm:.2f} {currency_symbol}/mo", delta_color="inverse")
+
+    # Основная сетка интерфейса (50/50)
     col_left_img, col_right_data = st.columns(2)
-    raw_dominant_color = None
-    final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
     with col_left_img:
-        manual_mode = st.checkbox("🎯 Enable manual target correction")
+        visual_img = img.copy()
+        # Огромный контрастный прицел (Увеличен в 2 раза)
+        cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
+        cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
+        cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
+        st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
         
-        if manual_mode:
-            st.markdown("**🎯 Координатная панель прицеливания (двойной ползунок):**")
-            cx = st.slider("Сдвиг прицела по ГОРИЗОНТАЛИ (X)", 0, w - 1, int(w * 0.5), step=1)
-            cy = st.slider("Сдвиг прицела по ВЕРТИКАЛИ (Y)", 0, h - 1, int(h * 0.65), step=1)
-            
-            cx = max(0, min(w - 1, int(cx)))
-            cy = max(0, min(h - 1, int(cy)))
-            
-            x1, y1 = max(0, cx - 10), max(0, cy - 10)
-            x2, y2 = min(w, cx + 10), min(h, cy + 10)
-            final_calculated_mask[y1:y2, x1:x2] = 1
-            raw_dominant_color = img[cy, cx]
-        else:
-            with st.spinner("AI is isolating clean paintwork..."):
-                model = YOLO("yolov8n-seg.pt")
-                results = model(img, verbose=False)
-                car_mask = np.zeros((h, w), dtype=np.uint8)
-                exclude_mask = np.zeros((h, w), dtype=np.uint8)
-                for result in results:
-                    if result.masks is not None:
-                        for mask, cls in zip(result.masks.data, result.boxes.cls):
-                            m_np = cv2.resize(mask.cpu().numpy(), (w, h))
-                            m_bin = (m_np > 0.5).astype(np.uint8)
-                            c_idx = int(cls)
-                            if c_idx == 2:
-                                car_mask = cv2.bitwise_or(car_mask, m_bin)
-                            if c_idx == 4 or c_idx == 7 or c_idx == 13:
-                                exclude_mask = cv2.bitwise_or(exclude_mask, m_bin)
-                if np.sum(car_mask) > 0:
-                    car_without_parts = cv2.bitwise_and(car_mask, cv2.bitwise_not(exclude_mask))
-                    kernel = np.ones((11, 11), np.uint8)
-                    clean_paint_mask = cv2.erode(car_without_parts, kernel, iterations=2)
-                    car_pixels_bgr = img[clean_paint_mask == 1]
-                    if len(car_pixels_bgr) > 0:
-                        final_calculated_mask[clean_paint_mask == 1] = 1
-                        raw_dominant_color = np.median(car_pixels_bgr, axis=0)
-                else:
-                    st.error("❌ AI could not find a car. Please enable manual target correction.")
-
-        if raw_dominant_color is not None:
-            visual_img = img.copy()
-            ch_p = create_checkerboard_pattern(w, h)
-            visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
-            
-            if manual_mode:
-                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
-                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
-                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
-            else:
-                cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-                
-            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
-
-    # --- ЗАЩИЩЕННЫЙ РАСЧЕТ И МГНОВЕННЫЙ ВЫВОД ---
-    if raw_dominant_color is not None:
-        dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
+    with col_right_data:
+        st.subheader("📊 Express Analysis Results")
+        st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
+        st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
         
-        # Получаем чистые числовые каналы BGR
-        b_channel = int(dominant_bgr[0])
-        g_channel = int(dominant_bgr[1])
-        r_channel = int(dominant_bgr[2])
+        status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
+        st.write(f"**Current Visibility Status:** {status_text}")
+        st.markdown("---")
         
-        # Защищенная LAB-матрица из нативного массива для исключения падений .item()
-        pixel_bgr_mat = np.uint8([[[b_channel, g_channel, r_channel]]])
-        pixel_rgb_mat = cv2.cvtColor(pixel_bgr_mat, cv2.COLOR_BGR2RGB)
+        st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
         
-        lab_matrix = cv2.cvtColor(pixel_rgb_mat.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
-        val_L = float(lab_matrix[0, 0, 0])
-        val_a = float(lab_matrix[0, 0, 1])
-        val_b = float(lab_matrix[0, 0, 2])
+        # НАСТОЯЩИЙ И БЕЗОТКАЗНЫЙ ЦВЕТНОЙ ПРЯМОУГОЛЬНИК (нативная матрица NumPy)
+        pure_color_block = np.zeros((150, 400, 3), dtype=np.uint8)
+        pure_color_block[:, :] = [r_val, g_val, b_val]
+        st.image(pure_color_block, caption="Isolated Paint Shade", use_container_width=True)
+        st.markdown("---")
         
-        bg_bgr_mat = np.uint8([[[int(CONSTANT_ROAD_BACKGROUND_RGB[2]), int(CONSTANT_ROAD_BACKGROUND_RGB[1]), int(CONSTANT_ROAD_BACKGROUND_RGB[0])]]])
-        bg_lab_matrix = cv2.cvtColor(bg_bgr_mat.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
-        bg_L = float(bg_lab_matrix[0, 0, 0])
-        bg_a = float(bg_lab_matrix[0, 0, 1])
-        bg_b = float(bg_lab_matrix[0, 0, 2])
+        m1, m2 = st.columns(2)
+        m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
+        m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
+        st.markdown("---")
         
-        delta_L = float(abs(val_L - bg_L))
-        delta_ab = float(np.sqrt(max(0.0, (val_a - bg_a)**2 + (val_b - bg_b)**2)) + 1e-5)
-        ivk_value = float(np.sqrt(max(0.0, (val_L - bg_L)**2 + (val_a - bg_a)**2 + (val_b - bg_b)**2)) + 1e-5)
-        
-        db_res = simulate_database_lookup(ivk_value, db_tolerance)
-        predicted_crf = float(predict_crf_by_function(ivk_value))
-        
-        bm = float(base_premium_annual / 12.0)
-        va = float(base_premium_annual * predicted_crf)
-        vm = float(va / 12.0)
-        da = float(va - base_premium_annual)
-        dm = float(vm - bm)
-        
-        txt_annual = f"{va:.2f} {currency_symbol}/yr"
-        txt_delta_a = f"{da:.2f} {currency_symbol}/yr"
-        txt_monthly = f"{vm:.2f} {currency_symbol}/mo"
-        txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
-
-        with sidebar_calc_space.container():
-            st.write("**🧮 Live Premium Calculation**")
-            st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
-            st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
-            st.metric(label="Adjusted Monthly Premium", value=txt_monthly, delta=txt_delta_m, delta_color="inverse")
-        
-        with col_right_data:
-            st.subheader("📊 Express Analysis Results")
-            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
-            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-            
-            status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
-            st.write(f"**Current Visibility Status:** {status_text}")
-            st.markdown("---")
-            
-            st.write(f"**Detected Car Body Color (RGB):** {r_channel}, {g_channel}, {b_channel}")
+        st.subheader("🔮 Predictive Evaluation by Databases")
+        st.write(f"Found **{db_res['total_cars']:,}** registered vehicles in the tolerance cloud.")
+        st.caption(f"Related Statistical Groups: {', '.join(db_res['groups'])}")
+        st.write("### Continuous Accident Risk Regression Curve")
