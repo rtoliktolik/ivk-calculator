@@ -205,7 +205,7 @@ if uploaded_file is not None:
     
     with col_left_img:
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
-        # Внедрен неразрывный пробел &nbsp; для 100% стабильного вывода прямоугольника в облаке
+        # ИСПРАВЛЕНО: Добавлен неразрывный пробел &nbsp; внутрь контейнера, чтобы Streamlit его не скрывал
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 50px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;">&nbsp;</div>', unsafe_allow_html=True)
         
         visual_img = img.copy()
