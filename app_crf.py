@@ -197,15 +197,15 @@ if uploaded_file is not None:
     with sidebar_calc_space.container():
         st.write("**🧮 Live Premium Calculation**")
         st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr ({base_premium_monthly:.2f} {currency_symbol}/mo)")
-        st.sidebar.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{get_d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
-        st.sidebar.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{get_d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
+        st.metric(label="Adjusted Annual Premium", value=f"{val_annual:.2f} {currency_symbol}/yr", delta=f"{get_d_annual:.2f} {currency_symbol}/yr", delta_color="inverse")
+        st.metric(label="Adjusted Monthly Premium", value=f"{val_monthly:.2f} {currency_symbol}/mo", delta=f"{get_d_monthly:.2f} {currency_symbol}/mo", delta_color="inverse")
 
     # СТРОИМ СБАЛАНСИРОВАННЫЙ ЦЕНТРАЛЬНЫЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ
     col_left_img, col_right_data = st.columns(2)
     
     with col_left_img:
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
-        # ИСПРАВЛЕНО: Добавлен неразрывный пробел &nbsp; внутрь контейнера, чтобы Streamlit его не скрывал
+        # Внедрен неразрывный пробел &nbsp; для 100% стабильного вывода прямоугольника в облаке
         st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 50px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;">&nbsp;</div>', unsafe_allow_html=True)
         
         visual_img = img.copy()
