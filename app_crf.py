@@ -50,23 +50,13 @@ def create_checkerboard_pattern(width, height, square_size=15):
     base[square_size:, 0:square_size] = (200, 200, 200)
     return np.tile(base, (int(np.ceil(height / (square_size * 2))), int(np.ceil(width / (square_size * 2))), 1))[0:height, 0:width]
 
-# --- ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА ---
+# --- ІНІЦІАЛІЗАЦІЯ ІНТЕРФЕЙСУ ---
 st.set_page_config(layout="wide", page_title="FARRATE-X | IVK Calculator")
 
-# CSS для принудительного разворота слайдера в честный вертикальный вид
 st.markdown("""
     <style>
     [data-testid="stMetricValue"] { font-size: 3.5rem !important; font-weight: bold !important; }
     [data-testid="stMetricLabel"] { font-size: 1.3rem !important; }
-    
-    /* Стилизация вертикального контейнера слайдера */
-    .vertical-slider-container div[data-testid="stSlider"] > div {
-        writing-mode: vertical-lr !important;
-        direction: rtl !important;
-        height: 380px !important;
-        padding-left: 20px !important;
-        margin: 0 auto !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -78,7 +68,7 @@ else:
 
 st.markdown("---")
 
-# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
+# --- СЕКЦЯ НАЛАШТУВАНЬ У БІЧНІЙ ПАНЕЛІ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -89,7 +79,7 @@ base_premium_annual = st.sidebar.number_input(label="Base Annual Premium:", min_
 
 sidebar_calc_space = st.sidebar.empty()
 
-# --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
+# --- ОСНОВНИЙ КОНТЕНТ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -102,26 +92,47 @@ if uploaded_file is not None:
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
     with col_left_img:
-        manual_mode = st.checkbox("🎯 Enable manual target correction")
+        manual_mode = st.checkbox("🎯 Enable manual target correction (Click directly on image to aim)")
         
+        # Ініціалізація або збереження координат кліку миші
+        if "click_x" not in st.session_state:
+            st.session_state.click_x = int(w * 0.5)
+        if "click_y" not in st.session_state:
+            st.session_state.click_y = int(h * 0.7)  # Зсунуто вниз, щоб відразу влучати в кузов, а не в небо
+
         if manual_mode:
-            # Горизонтальный слайдер строго над изображением
-            cx = st.slider("Horizontal Position (X Target)", 0, w, int(w / 2), step=2)
+            # Створюємо копію зображення з контрастним поліцветним прицілом для клікової карти
+            visual_img = img.copy()
+            ch_p = create_checkerboard_pattern(w, h)
             
-            # Разметка под вертикальный ползунок (1 часть ширины) и картинку (11 частей ширины)
-            slider_layout_col1, slider_layout_col2 = st.columns([1, 11])
-            
-            with slider_layout_col1:
-                # Нативный слайдер Streamlit, развернутый вертикально через CSS класс
-                st.write("<div style='text-align:center; font-weight:bold; font-size:14px;'>Y</div>", unsafe_allow_html=True)
-                st.markdown('<div class="vertical-slider-container">', unsafe_allow_html=True)
-                cy = st.slider("Vertical Position (Y Target)", 0, h, int(h / 2), step=2, label_visibility="collapsed")
-                st.markdown('</div>', unsafe_allow_html=True)
+            cx = st.session_state.click_x
+            cy = st.session_state.click_y
             
             x1, y1 = max(0, cx - 10), max(0, cy - 10)
             x2, y2 = min(w, cx + 10), min(h, cy + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
             raw_dominant_color = img[cy, cx]
+            
+            visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
+            
+            # Жирне контрастне перехрестя
+            cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 45, 5) 
+            cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 35, 3)     
+            cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 15, 3)
+            
+            # Інтерактивне зображення: клік у будь-яке місце оновлює координати без повзунків!
+            click_event = st.image(
+                cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), 
+                caption="Click anywhere on the car body to sample color", 
+                use_container_width=True,
+                on_click=None
+            )
+            
+            # Обробка вбудованої події кліку Streamlit (якщо подія відбулася)
+            if click_event is not None and isinstance(click_event, dict) and "x" in click_event:
+                st.session_state.click_x = int(click_event["x"])
+                st.session_state.click_y = int(click_event["y"])
+                st.rerun()
         else:
             with st.spinner("AI is isolating clean paintwork..."):
                 model = YOLO("yolov8n-seg.pt")
@@ -149,24 +160,15 @@ if uploaded_file is not None:
                 else:
                     st.error("❌ AI could not find a car. Please enable manual target correction.")
 
-        if raw_dominant_color is not None:
-            visual_img = img.copy()
-            ch_p = create_checkerboard_pattern(w, h)
-            visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
-            
-            if manual_mode:
-                # Контрастный составной полицветный прицел (реагирует мгновенно)
-                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 45, 5) 
-                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 35, 3)     
-                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 15, 3) 
-                with slider_layout_col2:
-                    st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
-            else:
+            if raw_dominant_color is not None:
+                visual_img = img.copy()
+                ch_p = create_checkerboard_pattern(w, h)
+                visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
                 st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    # --- СТАБИЛЬНЫЙ РАСЧЕТ И ОТРИСОВКА ПРАВОЙ КОЛОНКИ ---
+    # --- СТАБІЛЬНИЙ РОЗРАХУНОК ТА ВІДОБРАЖЕННЯ ПРАВОЇ КОЛОНКИ ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         
@@ -201,3 +203,4 @@ if uploaded_file is not None:
         da = float(va - base_premium_annual)
         dm = float(vm - bm)
         
+        txt_annual = f"{va:.2f} {currency_symbol}/yr"
