@@ -57,8 +57,6 @@ st.markdown("""
     <style>
     [data-testid="stMetricValue"] { font-size: 3.5rem !important; font-weight: bold !important; }
     [data-testid="stMetricLabel"] { font-size: 1.3rem !important; }
-    /* Стилизация вертикального слайдера */
-    div[data-testid="stSlider"] > div { min-height: 350px !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -97,15 +95,14 @@ if uploaded_file is not None:
         dominant_bgr = None
         
         if manual_mode:
-            # Слайдер Х располагается горизонтально над картинкой
+            # Замечание 3: Горизонтальный бегунок ровно над картинкой
             cx = st.slider("Horizontal Position (X Target)", 0, w, int(w / 2), step=2)
             
-            # Контейнер для выравнивания вертикального бегунка и самого фото
-            slider_layout_col1, slider_layout_col2 = st.columns([1, 11])
+            # Замечание 3: Разделение на колонки для вертикального слайдера слева и картинки справа
+            slider_layout_col1, slider_layout_col2 = st.columns([1, 4])
             
             with slider_layout_col1:
-                # Слайдер Y располагается слева от картинки на всю высоту
-                cy = st.slider("Vertical (Y Target)", 0, h, int(h / 2), step=2, label_visibility="collapsed")
+                cy = st.slider("Y", 0, h, int(h / 2), step=2, label_visibility="collapsed")
             
             x1, y1 = max(0, cx - 10), max(0, cy - 10)
             x2, y2 = min(w, cx + 10), min(h, cy + 10)
@@ -139,7 +136,6 @@ if uploaded_file is not None:
                     st.error("❌ AI could not find a car. Please enable manual target correction.")
 
         if dominant_bgr is not None:
-            # Приведение типа для стабильной математики
             dominant_bgr = np.array(dominant_bgr, dtype=np.uint8)
             
             visual_img = img.copy()
@@ -148,14 +144,13 @@ if uploaded_file is not None:
             
             if manual_mode:
                 # Замечание 2: Сборный крупный полицветный прицел высокой видимости
-                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 45, 5) # Белое основание
-                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 35, 3)     # Синий контур
-                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 15, 3) # Салатовый центр
+                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 45, 5) 
+                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 35, 3)     
+                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 15, 3) 
             else:
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
             
-            # Если включен ручной режим, рендерим картинку во вторую микро-колонку структуры слайдеров
             if manual_mode:
                 with slider_layout_col2:
                     st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
@@ -201,3 +196,7 @@ if uploaded_file is not None:
             txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
 
             with sidebar_calc_space.container():
+                st.write("**🧮 Live Premium Calculation**")
+                st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
+                st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
+                st.metric(label="Adjusted Monthly Premium", value=txt_monthly, delta=txt_delta_m, delta_color="inverse")
