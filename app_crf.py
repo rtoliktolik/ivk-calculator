@@ -92,9 +92,7 @@ if uploaded_file is not None:
         manual_mode = st.checkbox("🎯 Enable manual target correction")
         
         if manual_mode:
-            st.markdown("**🎯 Координатная панель прицеливания (двойной ползунок):**")
-            
-            # Единый стабильный блок управления во всю ширину картинки
+            st.markdown("**🎯 Координатная панель прицеливания:**")
             cx = st.slider("Сдвиг прицела по ГОРИЗОНТАЛИ (X)", 0, w - 1, int(w * 0.5), step=1)
             cy = st.slider("Сдвиг прицела по ВЕРТИКАЛИ (Y)", 0, h - 1, int(h * 0.65), step=1)
             
@@ -138,7 +136,6 @@ if uploaded_file is not None:
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
-                # Огромный трехцветный прицел (Увеличен ровно в 2 раза для идеальной видимости)
                 cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
                 cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
                 cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
@@ -148,7 +145,7 @@ if uploaded_file is not None:
                 
             st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    # --- НАДЕЖНЫЙ ИЗОЛИРОВАННЫЙ РАСЧЕТ И ПОЛНЫЙ ВЫВОД ПРАВОЙ КОЛОНКИ ---
+    # --- МОНОЛИТНАЯ И ГАРАНТИРОВАННАЯ ОТРИСОВКА АНАЛИТИКИ И ПРЯМОУГОЛЬНИКА ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         pixel_bgr = np.uint8([[list(dominant_bgr)]])
@@ -207,3 +204,8 @@ if uploaded_file is not None:
             st.markdown("---")
             
             m1, m2 = st.columns(2)
+            m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
+            m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
+            
+            st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
+            
