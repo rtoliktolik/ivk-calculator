@@ -15,13 +15,13 @@ def predict_crf_by_function(target_ivk: float) -> float:
 
 def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
     COLOR_STATS_DATABASE = [
-        {"name": "Grey",   "count": 3597270, "ivk_min": 0.0,  "ivk_max": 25.0},
-        {"name": "Black",  "count": 2634864, "ivk_min": 25.0, "ivk_max": 42.0},
-        {"name": "Blue",   "count": 1382228, "ivk_min": 42.0, "ivk_max": 48.0},
-        {"name": "Others", "count": 772997,  "ivk_min": 48.0, "ivk_max": 52.0},
-        {"name": "Red",    "count": 654054,  "ivk_min": 52.0, "ivk_max": 57.0},
-        {"name": "White",  "count": 1639041, "ivk_min": 57.0, "ivk_max": 65.0},
-        {"name": "Yellow", "count": 96277,   "ivk_min": 65.0, "ivk_max": 150.0},
+        {"name": "Grey", "count": 3597270, "ivk_min": 0.0, "ivk_max": 25.0},
+        {"name": "Black", "count": 2634864, "ivk_min": 25.0, "ivk_max": 42.0},
+        {"name": "Blue", "count": 1382228, "ivk_min": 42.0, "ivk_max": 48.0},
+        {"name": "Others", "count": 772997, "ivk_min": 48.0, "ivk_max": 52.0},
+        {"name": "Red", "count": 654054, "ivk_min": 52.0, "ivk_max": 57.0},
+        {"name": "White", "count": 1639041, "ivk_min": 57.0, "ivk_max": 65.0},
+        {"name": "Yellow", "count": 96277, "ivk_min": 65.0, "ivk_max": 150.0},
     ]
     ivk_min = max(0.0, target_ivk - tolerance)
     ivk_max = target_ivk + tolerance
@@ -87,22 +87,24 @@ if uploaded_file is not None:
     img = cv2.imdecode(file_bytes, 1)
     h, w, _ = img.shape
     
-    # Главная сетка: Левая рабочая область (картинка + настройки), Правая область аналитики
-    col_main_left, col_right_data = st.columns(2)
+    col_left_img, col_right_data = st.columns(2)
     raw_dominant_color = None
     final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
-    with col_main_left:
+    with col_left_img:
         manual_mode = st.checkbox("🎯 Enable manual target correction")
         
-        # Внутренняя сетка для размещения слайдеров КОРРЕКТНО и РЯДОМ с картинкой
-        col_img_display, col_img_sliders = st.columns([3, 1])
-        
         if manual_mode:
-            with col_img_sliders:
-                st.markdown("**Aiming controls:**")
-                cx = st.slider("Horizontal (X)", 0, w, int(w * 0.5), step=2)
-                cy = st.slider("Vertical (Y)", 0, h, int(h * 0.7), step=2) # Смещено к капоту по умолчанию
+            # Слайдер Х располагается горизонтально ровно по длине всей картинки НАД картинкой
+            cx = st.slider("Horizontal Position (X Target)", 0, w - 1, int(w * 0.5), step=1)
+            
+            # Слайдер Y располагается горизонтально ниже (для стабильности в Streamlit), 
+            # но его значения гарантированно попадают в рамки изображения
+            cy = st.slider("Vertical Position (Y Target)", 0, h - 1, int(h * 0.65), step=1)
+            
+            # Строгая защита от выхода прицела за границы пикселей матрицы
+            cx = max(0, min(w - 1, int(cx)))
+            cy = max(0, min(h - 1, int(cy)))
             
             x1, y1 = max(0, cx - 10), max(0, cy - 10)
             x2, y2 = min(w, cx + 10), min(h, cy + 10)
@@ -135,13 +137,13 @@ if uploaded_file is not None:
                 else:
                     st.error("❌ AI could not find a car. Please enable manual target correction.")
 
-        # Отрисовка изображения с прицелом высокой контрастности
         if raw_dominant_color is not None:
             visual_img = img.copy()
             ch_p = create_checkerboard_pattern(w, h)
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
+                # Крупный полицветный прицел высокой видимости
                 cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 45, 5) 
                 cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 35, 3)     
                 cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 15, 3) 
@@ -149,10 +151,9 @@ if uploaded_file is not None:
                 cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
                 
-            with col_img_display:
-                st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    # --- НАДЁЖНЫЙ РАСЧЕТ И ОТРИСОВКА ПРАВОЙ КОЛОНКИ ---
+    # --- СТАБИЛЬНЫЙ РАСЧЕТ И ОТРИСОВКА ПРАВОЙ КОЛОНКИ ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         
@@ -203,4 +204,3 @@ if uploaded_file is not None:
             g_val = int(pixel_rgb.item(0, 0, 1))
             b_val = int(pixel_rgb.item(0, 0, 2))
             
-            st.subheader("📊 Express Analysis Results")
