@@ -134,22 +134,7 @@ if uploaded_file is not None:
                 else:
                     st.error("❌ AI could not find a car. Please enable manual target correction.")
 
-        if raw_dominant_color is not None:
-            visual_img = img.copy()
-            ch_p = create_checkerboard_pattern(w, h)
-            visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
-            
-            if manual_mode:
-                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
-                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
-                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
-            else:
-                cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-                
-            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
-
-    # --- МОНОЛИТНЫЙ, ПОЛНОСТЬЮ ИЗОЛИРОВАННЫЙ ВЫВОД ПРАВОЙ КОЛОНКИ ---
+    # --- МОНОЛИТНЫЙ, СИНХРОННЫЙ И БЕЗОПАСНЫЙ РАСЧЕТ И ВЫВОД ВСЕХ ДАННЫХ СТРОГО В ОДНОМ МЕСТЕ ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         
@@ -193,19 +178,31 @@ if uploaded_file is not None:
         txt_monthly = f"{vm:.2f} {currency_symbol}/mo"
         txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
 
+        # 1. Отрисовка изображения кузова в левую колонку
+        with col_left_img:
+            visual_img = img.copy()
+            ch_p = create_checkerboard_pattern(w, h)
+            visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
+            if manual_mode:
+                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
+                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
+                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
+            else:
+                cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
+            st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
+
+        # 2. Отрисовка финансовых премий в сайдбар
         with sidebar_calc_space.container():
             st.write("**🧮 Live Premium Calculation**")
             st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
             st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
             st.metric(label="Adjusted Monthly Premium", value=txt_monthly, delta=txt_delta_m, delta_color="inverse")
         
+        # 3. Полный, непрерывный вывод правой аналитической панели без обрывов
         with col_right_data:
             st.subheader("📊 Express Analysis Results")
             st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
             st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
             
             status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
-            st.write(f"**Current Visibility Status:** {status_text}")
-            st.markdown("---")
-            
-            # --- ИСПРАВЛЕННЫЙ И 100% СТАБИЛЬНЫЙ ВЫВОД ПРЯМОУГОЛЬНИКА ЦВЕТА КУЗОВА ---
