@@ -145,13 +145,8 @@ if uploaded_file is not None:
     
     if manual_mode:
         st.markdown("**Crosshair coordinates:**")
-        cx = st.slider("Horizontal Position (X)", 0, w, int(w * 0.34), step=1, key="slider_cx")
-        cy = st.slider("Vertical Position (Y)", 0, h, int(h * 0.48), step=1, key="slider_cy")
-        
-        # Защита границ
-        cx = max(0, min(w - 1, int(cx)))
-        cy = max(0, min(h - 1, int(cy)))
-        
+        cx = st.slider("Horizontal (X)", 0, w, int(w * 0.34), step=2, key="slider_cx")
+        cy = st.slider("Vertical (Y)", 0, h, int(h * 0.48), step=2, key="slider_cy")
         final_calculated_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
         b_raw, g_raw, r_raw = img[cy, cx]
         r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
@@ -205,8 +200,7 @@ if uploaded_file is not None:
     
     with col_left_img:
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
-        # ИСПРАВЛЕНО: Добавлен неразрывный пробел &nbsp; внутрь контейнера, чтобы Streamlit его не скрывал
-        st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 50px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;">&nbsp;</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
         
         visual_img = img.copy()
         if manual_mode:
@@ -224,3 +218,8 @@ if uploaded_file is not None:
         
         col_ivk, col_crf = st.columns(2)
         with col_ivk:
+            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
+        with col_crf:
+            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
+        
+        status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
