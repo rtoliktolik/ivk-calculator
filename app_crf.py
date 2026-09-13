@@ -116,7 +116,8 @@ if uploaded_file is not None:
                             c_idx = int(cls)
                             if c_idx == 2:
                                 car_mask = cv2.bitwise_or(car_mask, m_bin)
-                            if c_idx in:
+                            # Защищенная структура фильтрации без использования оператора IN
+                            if c_idx == 4 or c_idx == 7 or c_idx == 13:
                                 exclude_mask = cv2.bitwise_or(exclude_mask, m_bin)
                 if np.sum(car_mask) > 0:
                     car_without_parts = cv2.bitwise_and(car_mask, cv2.bitwise_not(exclude_mask))
@@ -200,5 +201,3 @@ if uploaded_file is not None:
             m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
             m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
             
-            st.write(f"**Detected Car Body Color (RGB):** {r_val}, {g_val}, {b_val}")
-            pure_color_block = np.zeros((60, 400, 3), dtype=np.uint8)
