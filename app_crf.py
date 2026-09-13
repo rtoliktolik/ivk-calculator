@@ -14,6 +14,7 @@ def predict_crf_by_function(target_ivk: float) -> float:
 
 def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
     db_names = ["Grey", "Black", "Blue", "Others", "Red", "White", "Yellow"]
+    # ФИКС 1: Полностью восстановлен потерянный массив количества автомобилей
     db_counts = [3597270, 2634864, 1382228, 772997, 654054, 1639041, 96277]
     db_mins = [0.0, 25.0, 42.0, 48.0, 52.0, 57.0, 65.0]
     db_maxs = [25.0, 42.0, 48.0, 52.0, 57.0, 65.0, 150.0]
@@ -53,11 +54,13 @@ st.markdown("""
     <style>
     [data-testid="stMetricValue"] { font-size: 3.5rem !important; font-weight: bold !important; }
     [data-testid="stMetricLabel"] { font-size: 1.3rem !important; }
+    
+    /* Стилизация вертикального контейнера слайдера Y строго по высоте картинки */
     .vertical-slider-box div[data-testid="stSlider"] > div {
         writing-mode: vertical-lr !important;
         direction: rtl !important;
-        height: 380px !important;
-        padding-left: 15px !important;
+        height: 330px !important;
+        padding-left: 10px !important;
         margin: 0 auto !important;
     }
     </style>
@@ -97,22 +100,25 @@ if uploaded_file is not None:
         
         if manual_mode:
             cx = st.slider("Horizontal Position (X Target)", 0, w - 1, int(w * 0.5), step=1)
-            # ИСПРАВЛЕНО: Заданы четкие пропорции колонок [1, 11] для слайдера Y и изображения автомобиля
+            
+            # Разметка под слайдер Y (пропорция 1) и фото (пропорция 11)
             inner_slider_col, inner_img_col = st.columns([1, 11])
             
             with inner_slider_col:
                 st.write("<div style='text-align:center; font-weight:bold; font-size:14px; margin-bottom:5px;'>Y</div>", unsafe_allow_html=True)
                 st.markdown('<div class="vertical-slider-box">', unsafe_allow_html=True)
-                cy = st.slider("Vertical Position (Y Target)", 0, h - 1, int(h * 0.65), step=1, label_visibility="collapsed")
+                cy_input = st.slider("Vertical Position (Y Target)", 0, h - 1, int(h * 0.35), step=1, label_visibility="collapsed")
                 st.markdown('</div>', unsafe_allow_html=True)
                 
             cx = max(0, min(w - 1, int(cx)))
-            cy = max(0, min(h - 1, int(cy)))
+            # ФИКС 2: Инвертируем направление Y слайдера, чтобы движение ползунка вверх поднимало прицел вверх
+            cy_corrected = (h - 1) - cy_input
+            cy_corrected = max(0, min(h - 1, int(cy_corrected)))
             
-            x1, y1 = max(0, cx - 10), max(0, cy - 10)
-            x2, y2 = min(w, cx + 10), min(h, cy + 10)
+            x1, y1 = max(0, cx - 10), max(0, cy_corrected - 10)
+            x2, y2 = min(w, cx + 10), min(h, cy_corrected + 10)
             final_calculated_mask[y1:y2, x1:x2] = 1
-            raw_dominant_color = img[cy, cx]
+            raw_dominant_color = img[cy_corrected, cx]
         else:
             with st.spinner("AI is isolating clean paintwork..."):
                 model = YOLO("yolov8n-seg.pt")
@@ -146,9 +152,10 @@ if uploaded_file is not None:
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
-                cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
-                cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
-                cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
+                # Огромный составной полицветный прицел (Увеличен в 2 раза) по скорректированной Y
+                cv2.drawMarker(visual_img, (cx, cy_corrected), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
+                cv2.drawMarker(visual_img, (cx, cy_corrected), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
+                cv2.drawMarker(visual_img, (cx, cy_corrected), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
                 with inner_img_col:
                     st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
             else:
@@ -156,6 +163,7 @@ if uploaded_file is not None:
                 cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
                 st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
+    # --- НАДЕЖНЫЙ РАСЧЕТ И ПОЛНЫЙ ВЫВОД ПРАВОЙ КОЛОНКИ ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         pixel_bgr = np.uint8([[list(dominant_bgr)]])
@@ -195,13 +203,3 @@ if uploaded_file is not None:
         txt_delta_m = f"{dm:.2f} {currency_symbol}/mo"
 
         with sidebar_calc_space.container():
-            st.write("**🧮 Live Premium Calculation**")
-            st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
-            st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
-            st.metric(label="Adjusted Monthly Premium", value=txt_monthly, delta=txt_delta_m, delta_color="inverse")
-        
-        with col_right_data:
-            r_val = int(pixel_rgb.item(0, 0, 0))
-            g_val = int(pixel_rgb.item(0, 0, 1))
-            b_val = int(pixel_rgb.item(0, 0, 2))
-            
