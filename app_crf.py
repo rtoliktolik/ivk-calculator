@@ -14,8 +14,6 @@ def predict_crf_by_function(target_ivk: float) -> float:
 
 def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
     db_names = ["Grey", "Black", "Blue", "Others", "Red", "White", "Yellow"]
-    
-    # Полностью безопасный формат хранения данных для защиты от склеивания строк
     counts_str = ["3597270", "2634864", "1382228", "772997", "654054", "1639041", "96277"]
     db_counts = [int(x) for x in counts_str]
     
@@ -69,7 +67,6 @@ else:
 
 st.markdown("---")
 
-# --- СЕКЦИЯ НАСТРОЕК В БОКОВОЙ ПАНЕЛИ ---
 st.sidebar.header("⚙️ Database Settings")
 db_tolerance = st.sidebar.slider("Cloud tolerance radius (± IVK):", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -80,7 +77,6 @@ base_premium_annual = st.sidebar.number_input(label="Base Annual Premium:", min_
 
 sidebar_calc_space = st.sidebar.empty()
 
-# --- ОСНОВНОЙ КОНТЕНТ ПРИЛОЖЕНИЯ ---
 uploaded_file = st.file_uploader("Step 1 — Upload car photo", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -149,7 +145,7 @@ if uploaded_file is not None:
                 
             st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
-    # --- НАДЕЖНЫЙ ИЗОЛИРОВАННЫЙ РАСЧЕТ И ПОЛНЫЙ ВЫВОД ПРАВОЙ КОЛОНКИ ---
+    # --- НАДЕЖНЫЙ ЗАЩИЩЕННЫЙ РАСЧЕТ И ПОЛНЫЙ ВЫВОД ПРАВОЙ КОЛОНКИ ---
     if raw_dominant_color is not None:
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         pixel_bgr = np.uint8([[list(dominant_bgr)]])
@@ -170,9 +166,10 @@ if uploaded_file is not None:
         bg_a = float(bg_lab_matrix.item(0, 0, 1))
         bg_b = float(bg_lab_matrix.item(0, 0, 2))
         
+        # Защита математических функций от вылетов (добавлено микросмещение 1e-5)
         delta_L = float(abs(val_L - bg_L))
-        delta_ab = float(np.sqrt((val_a - bg_a)**2 + (val_b - bg_b)**2))
-        ivk_value = float(np.sqrt((val_L - bg_L)**2 + (val_a - bg_a)**2 + (val_b - bg_b)**2))
+        delta_ab = float(np.sqrt(max(0.0, (val_a - bg_a)**2 + (val_b - bg_b)**2)) + 1e-5)
+        ivk_value = float(np.sqrt(max(0.0, (val_L - bg_L)**2 + (val_a - bg_a)**2 + (val_b - bg_b)**2)) + 1e-5)
         
         db_res = simulate_database_lookup(ivk_value, db_tolerance)
         predicted_crf = float(predict_crf_by_function(ivk_value))
@@ -209,3 +206,5 @@ if uploaded_file is not None:
             
             m1, m2 = st.columns(2)
             m1.metric("Light Contrast ΔL", f"{delta_L:.2f}")
+            m2.metric("Chromatic Contrast Δab", f"{delta_ab:.2f}")
+            
