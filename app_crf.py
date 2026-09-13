@@ -88,21 +88,21 @@ if uploaded_file is not None:
     h, w, _ = img.shape
     
     col_left_img, col_right_data = st.columns(2)
+    dominant_bgr = None
+    final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
     
     with col_left_img:
         manual_mode = st.checkbox("🎯 Enable manual target correction")
-        final_calculated_mask = np.zeros((h, w), dtype=np.uint8)
-        dominant_bgr = None
         
         if manual_mode:
-            # Замечание 3: Горизонтальный бегунок ровно над картинкой
+            # Слайдер Х строго над картинкой
             cx = st.slider("Horizontal Position (X Target)", 0, w, int(w / 2), step=2)
             
-            # Замечание 3: Разделение на колонки для вертикального слайдера слева и картинки справа
-            slider_layout_col1, slider_layout_col2 = st.columns([1, 4])
+            # Пропорциональная сетка: узкая колонка для вертикального ползунка, широкая для фото
+            slider_layout_col1, slider_layout_col2 = st.columns([1, 15])
             
             with slider_layout_col1:
-                cy = st.slider("Y", 0, h, int(h / 2), step=2, label_visibility="collapsed")
+                cy = st.slider("Y Position", 0, h, int(h / 2), step=2, label_visibility="collapsed")
             
             x1, y1 = max(0, cx - 10), max(0, cy - 10)
             x2, y2 = min(w, cx + 10), min(h, cy + 10)
@@ -135,28 +135,26 @@ if uploaded_file is not None:
                 else:
                     st.error("❌ AI could not find a car. Please enable manual target correction.")
 
+        # Отрисовка изображения с прицелом/контуром
         if dominant_bgr is not None:
             dominant_bgr = np.array(dominant_bgr, dtype=np.uint8)
-            
             visual_img = img.copy()
             ch_p = create_checkerboard_pattern(w, h)
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
-                # Замечание 2: Сборный крупный полицветный прицел высокой видимости
+                # Контрастный составной полицветный прицел
                 cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 45, 5) 
                 cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 35, 3)     
                 cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 15, 3) 
-            else:
-                cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
-            
-            if manual_mode:
                 with slider_layout_col2:
                     st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
             else:
+                cnts, _ = cv2.findContours(final_calculated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 2)
                 st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
+    # --- НЕЗАВИСИМАЯ ОТ РЕЖИМА ПРАВАЯ КОЛОНКА ---
     with col_right_data:
         if dominant_bgr is not None:
             pixel_bgr = np.uint8([[list(dominant_bgr)]])
@@ -184,6 +182,7 @@ if uploaded_file is not None:
             db_res = simulate_database_lookup(ivk_value, db_tolerance)
             predicted_crf = predict_crf_by_function(ivk_value)
             
+            # Расчет финансовых показателей
             bm = float(base_premium_annual / 12.0)
             va = float(base_premium_annual * predicted_crf)
             vm = float(va / 12.0)
@@ -199,4 +198,3 @@ if uploaded_file is not None:
                 st.write("**🧮 Live Premium Calculation**")
                 st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
                 st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
-                st.metric(label="Adjusted Monthly Premium", value=txt_monthly, delta=txt_delta_m, delta_color="inverse")
