@@ -160,7 +160,7 @@ if uploaded_file is not None:
             model = load_yolo_model()
             results = model(img, verbose=False)
             car_mask = np.zeros((h, w), dtype=np.uint8)
-            VALID_VEHICLE_CLASSES = [2, 5, 7]
+            VALID_VEHICLE_CLASSES =
             
             for result in results:
                 if result.masks is not None:
@@ -176,9 +176,9 @@ if uploaded_file is not None:
                 
                 mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                 mean_bgr = cv2.mean(img, mask=mask_uint8)
-                b_val = int(mean_bgr[0])
-                g_val = int(mean_bgr[1])
-                r_val = int(mean_bgr[2])
+                b_val = int(mean_bgr)
+                g_val = int(mean_bgr)
+                r_val = int(mean_bgr)
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
