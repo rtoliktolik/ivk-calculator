@@ -10,6 +10,7 @@ CONSTANT_ROAD_BACKGROUND_RGB = (105, 105, 105)
 def predict_crf_by_function(target_ivk: float) -> float:
     xp = [12.5, 33.5, 47.0, 58.5, 80.0]
     fp = [1.19, 1.03, 1.00, 0.975, 0.93]
+    # Принудительное приведение к нативному float для стабильного форматирования текста
     predicted_crf = float(np.interp(target_ivk, xp, fp))
     return float(np.round(predicted_crf, 2))
 
@@ -96,7 +97,7 @@ if uploaded_file is not None:
         
         if manual_mode:
             cx = st.slider("Horizontal Position (X Target)", 0, w, int(w / 2), step=2)
-            slider_layout_col1, slider_layout_col2 = st.columns([1, 9])
+            slider_layout_col1, slider_layout_col2 = st.columns([1, 15])
             
             with slider_layout_col1:
                 cy = st.slider("Y Position", 0, h, int(h / 2), step=2, label_visibility="collapsed")
@@ -150,7 +151,6 @@ if uploaded_file is not None:
 
     # --- СТАБИЛЬНЫЙ РАСЧЕТ И ОТРИСОВКА ПРАВОЙ КОЛОНКИ ---
     if raw_dominant_color is not None:
-        # Гарантированное приведение медианы к целочисленному массиву uint8 для OpenCV
         dominant_bgr = np.round(raw_dominant_color).astype(np.uint8)
         
         pixel_bgr = np.uint8([[list(dominant_bgr)]])
@@ -176,7 +176,7 @@ if uploaded_file is not None:
         ivk_value = float(np.sqrt((val_L - bg_L)**2 + (val_a - bg_a)**2 + (val_b - bg_b)**2))
         
         db_res = simulate_database_lookup(ivk_value, db_tolerance)
-        predicted_crf = predict_crf_by_function(ivk_value)
+        predicted_crf = float(predict_crf_by_function(ivk_value))
         
         bm = float(base_premium_annual / 12.0)
         va = float(base_premium_annual * predicted_crf)
