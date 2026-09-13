@@ -175,10 +175,10 @@ if uploaded_file is not None:
                 mask_uint8 = cv2.convertScaleAbs(final_calculated_mask)
                 mean_bgr = cv2.mean(img, mask=mask_uint8)
                 
-                # ИСПРАВЛЕНО ОКОНЧАТЕЛЬНО: Индексы извлекаются строго раздельно!
-                b_val = int(np.round(mean_bgr[0]))
-                g_val = int(np.round(mean_bgr[1]))
-                r_val = int(np.round(mean_bgr[2]))
+                # ИСПРАВЛЕНО: Индексы кортежа mean_bgr разделены корректно
+                b_val = int(round(mean_bgr[0]))
+                g_val = int(round(mean_bgr[1]))
+                r_val = int(round(mean_bgr[2]))
 
     # МАТЕМАТИЧЕСКИЙ РАСЧЕТ ИНДЕКСОВ И ПРЕМИЙ
     p_L, p_a, p_b = rgb_to_lab(r_val, g_val, b_val)
