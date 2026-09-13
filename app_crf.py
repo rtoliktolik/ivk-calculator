@@ -147,6 +147,11 @@ if uploaded_file is not None:
         st.markdown("**Crosshair coordinates:**")
         cx = st.slider("Horizontal (X)", 0, w, int(w * 0.34), step=2, key="slider_cx")
         cy = st.slider("Vertical (Y)", 0, h, int(h * 0.48), step=2, key="slider_cy")
+        
+        # Защита границ матрицы изображения
+        cx = max(0, min(w - 1, int(cx)))
+        cy = max(0, min(h - 1, int(cy)))
+        
         final_calculated_mask[max(0, cy-12):min(h, cy+12), max(0, cx-12):min(w, cx+12)] = 1
         b_raw, g_raw, r_raw = img[cy, cx]
         r_val, g_val, b_val = int(r_raw), int(g_raw), int(b_raw)
@@ -200,13 +205,17 @@ if uploaded_file is not None:
     
     with col_left_img:
         st.markdown(f'**Isolated Paint Color Specimen (RGB: {r_val}, {g_val}, {b_val}):**')
-        st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background-color: rgb({r_val},{g_val},{b_val}); width: 100%; height: 40px; border-radius: 5px; border: 1px solid #ccc; margin-bottom: 15px;">&nbsp;</div>', unsafe_allow_html=True)
         
         visual_img = img.copy()
         if manual_mode:
             ch_p = create_checkerboard_pattern(w, h)
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
-            cv2.drawMarker(visual_img, (cx, cy), (0, 0, 255), cv2.MARKER_CROSS, 25, 3)
+            
+            # УВЕЛИЧЕННЫЙ И ТРЕХЦВЕТНЫЙ ПРИЦЕЛ ВЫСОКОЙ КОНТРАСТНОСТИ
+            cv2.drawMarker(visual_img, (cx, cy), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
+            cv2.drawMarker(visual_img, (cx, cy), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
+            cv2.drawMarker(visual_img, (cx, cy), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
         else:
             cnts, _ = cv2.findContours(cv2.convertScaleAbs(final_calculated_mask), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(visual_img, cnts, -1, (0, 255, 0), 3)
@@ -214,12 +223,3 @@ if uploaded_file is not None:
         st.image(cv2.cvtColor(visual_img, cv2.COLOR_BGR2RGB), caption="Body Paintwork Scanning Zone", use_container_width=True)
 
     with col_right_data:
-        st.subheader("📊 Express Analysis Results")
-        
-        col_ivk, col_crf = st.columns(2)
-        with col_ivk:
-            st.metric("Visual Contrast Index (IVK)", f"{ivk_value:.2f}")
-        with col_crf:
-            st.metric("Color Risk Factor (CRF)", f"{predicted_crf:.2f}")
-        
-        status_text = "LOW RISK 👍" if predicted_crf < 1.0 else ("HIGH RISK ⚠️" if predicted_crf > 1.0 else "NORMAL")
