@@ -14,7 +14,6 @@ def predict_crf_by_function(target_ivk: float) -> float:
 
 def simulate_database_lookup(target_ivk: float, tolerance: float) -> dict:
     db_names = ["Grey", "Black", "Blue", "Others", "Red", "White", "Yellow"]
-    # Безопасный плоский массив данных, который никогда не сломает синтаксис
     db_counts = [3597270, 2634864, 1382228, 772997, 654054, 1639041, 96277]
     db_mins = [0.0, 25.0, 42.0, 48.0, 52.0, 57.0, 65.0]
     db_maxs = [25.0, 42.0, 48.0, 52.0, 57.0, 65.0, 150.0]
@@ -55,12 +54,12 @@ st.markdown("""
     [data-testid="stMetricValue"] { font-size: 3.5rem !important; font-weight: bold !important; }
     [data-testid="stMetricLabel"] { font-size: 1.3rem !important; }
     
-    /* Идеальный разворот слайдера в честный вертикальный вид */
+    /* Жесткая фиксация высоты вертикального ползунка */
     .vertical-slider-box div[data-testid="stSlider"] > div {
         writing-mode: vertical-lr !important;
         direction: rtl !important;
-        height: 350px !important;
-        padding-left: 10px !important;
+        height: 340px !important;
+        padding-left: 0px !important;
         margin: 0 auto !important;
     }
     </style>
@@ -101,7 +100,7 @@ if uploaded_file is not None:
         if manual_mode:
             cx = st.slider("Horizontal Position (X Target)", 0, w - 1, int(w * 0.5), step=1)
             
-            # Строгое деление колонок: 1 часть под слайдер, 15 частей под фото
+            # ИСПРАВЛЕНО: Заданы жесткие пропорции колонок (1 к 15), чтобы ползунок не сжимал картинку
             inner_slider_col, inner_img_col = st.columns([1, 15])
             
             with inner_slider_col:
@@ -111,7 +110,6 @@ if uploaded_file is not None:
                 st.markdown('</div>', unsafe_allow_html=True)
                 
             cx = max(0, min(w - 1, int(cx)))
-            # Синхронизация осей: движение ползунка вверх теперь поднимает прицел вверх
             cy_corrected = (h - 1) - cy_input
             cy_corrected = max(0, min(h - 1, int(cy_corrected)))
             
@@ -152,7 +150,6 @@ if uploaded_file is not None:
             visual_img[final_calculated_mask == 0] = cv2.addWeighted(img, 0.5, ch_p, 0.5, 0)[final_calculated_mask == 0]
             
             if manual_mode:
-                # Огромный трехцветный прицел высокой видимости
                 cv2.drawMarker(visual_img, (cx, cy_corrected), (255, 255, 255), cv2.MARKER_CROSS, 90, 10) 
                 cv2.drawMarker(visual_img, (cx, cy_corrected), (255, 0, 0), cv2.MARKER_CROSS, 70, 6)     
                 cv2.drawMarker(visual_img, (cx, cy_corrected), (0, 255, 0), cv2.MARKER_TILTED_CROSS, 30, 6) 
@@ -204,3 +201,5 @@ if uploaded_file is not None:
 
         with sidebar_calc_space.container():
             st.write("**🧮 Live Premium Calculation**")
+            st.write(f"Base: {base_premium_annual:.2f} {currency_symbol}/yr")
+            st.metric(label="Adjusted Annual Premium", value=txt_annual, delta=txt_delta_a, delta_color="inverse")
